@@ -1,0 +1,56 @@
+{% set page_range_start = [1, page - 3] | max %}
+{% set page_range_end = [total_pages, page + 3] | min %}
+
+<div class="pagination-bar">
+  <span>Showing <strong>{{ ((page - 1) * per_page) + 1 }}–{{ [page * per_page, total] | min }}</strong> of <strong>{{ total }}</strong> cards</span>
+
+  <div class="pagination">
+    <button class="page-btn {% if page <= 1 %}disabled{% endif %}"
+            {% if page > 1 %}
+            hx-get="/cards?{{ filter_query_string(request) }}&page={{ page - 1 }}&per_page={{ per_page }}"
+            hx-target="#card-grid" hx-swap="outerHTML" hx-push-url="true"
+            {% endif %}>«</button>
+
+    {% for p in range(page_range_start, page_range_end + 1) %}
+    <button class="page-btn {% if p == page %}active{% endif %}"
+            hx-get="/cards?{{ filter_query_string(request) }}&page={{ p }}&per_page={{ per_page }}"
+            hx-target="#card-grid" hx-swap="outerHTML" hx-push-url="true">{{ p }}</button>
+    {% endfor %}
+
+    <button class="page-btn {% if page >= total_pages %}disabled{% endif %}"
+            {% if page < total_pages %}
+            hx-get="/cards?{{ filter_query_string(request) }}&page={{ page + 1 }}&per_page={{ per_page }}"
+            hx-target="#card-grid" hx-swap="outerHTML" hx-push-url="true"
+            {% endif %}>»</button>
+  </div>
+
+  <span style="display:flex;align-items:center;gap:16px;">
+    <span style="display:flex;align-items:center;gap:8px;">
+      Sort:
+      <select class="per-page-select"
+              onchange="var h=document.getElementById('sort-hidden'),f=document.getElementById('filter-form'); if(h&&f){h.value=this.value;htmx.trigger(f,'change');}">
+        <option value="alpha"       {{ 'selected' if sort == 'alpha' else '' }}>Name (A→Z)</option>
+        <option value="color"       {{ 'selected' if sort == 'color' else '' }}>Color</option>
+        <option value="color_alpha" {{ 'selected' if sort == 'color_alpha' else '' }}>Color → Name</option>
+        <option value="color_cmc"   {{ 'selected' if sort == 'color_cmc' else '' }}>Color → CMC</option>
+        <option value="color_owned" {{ 'selected' if sort == 'color_owned' else '' }}>Color → Owned</option>
+        <option value="cmc"         {{ 'selected' if sort == 'cmc' else '' }}>CMC</option>
+      </select>
+    </span>
+    <span style="display:flex;align-items:center;gap:8px;">
+      Per page:
+      <select class="per-page-select"
+              name="per_page"
+              hx-get="/cards"
+              hx-target="#card-grid"
+              hx-swap="outerHTML"
+              hx-include="#filter-form"
+              hx-push-url="true"
+              hx-params="*">
+        {% for size in [20, 50, 75, 100, 200] %}
+        <option value="{{ size }}" {{ 'selected' if size == per_page else '' }}>{{ size }}</option>
+        {% endfor %}
+      </select>
+    </span>
+  </span>
+</div>

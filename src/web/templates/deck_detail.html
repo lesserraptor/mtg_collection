@@ -1,0 +1,429 @@
+{% extends "base.html" %}
+
+{% block title %}{{ deck.name }} — MTG Collection{% endblock %}
+
+{% block sidebar %}
+{% if (deck.is_potential or deck.is_saved) and not viewing_version %}
+<div id="sidebar-default">
+  <button type="button" class="btn-action-primary" onclick="enterEditMode()">Edit Deck</button>
+</div>
+{% endif %}
+<button id="copy-deck-btn" type="button" class="btn-action-primary" style="margin-top:8px">Copy to Clipboard</button>
+<div class="filter-section">
+  <a href="/decks{% if mode == 'potential' %}?potential=1{% elif mode == 'saved' %}?saved=1{% endif %}"
+     style="color:#731fa1; font-size:13px; display:block; margin-bottom:8px">&#8592; Deck List</a>
+  <div style="font-size:12px; color:rgba(51,51,51,0.6)">Imported {{ deck.imported_at[:10] }}</div>
+</div>
+{% if (deck.is_potential or deck.is_saved) and not viewing_version %}
+<div id="sidebar-edit" style="display:none; padding: 0 0 1rem 0">
+  <div style="margin-bottom:12px">
+    <div class="filter-label" style="margin-bottom:4px">Deck Type</div>
+    <input id="deck-type-inp" name="format" type="text"
+           value="{{ deck.format or '' }}"
+           data-original="{{ deck.format or '' }}"
+           placeholder="e.g. Standard, Historic"
+           hx-patch="/decks/{{ deck.id }}/update-format"
+           hx-trigger="blur"
+           hx-swap="none"
+           style="width:100%; box-sizing:border-box; padding:5px 8px; font-size:13px; border:1px solid #dee2e6; border-radius:4px; font-family:inherit">
+  </div>
+  <div style="margin-bottom:8px">
+    <div class="filter-label" style="margin-bottom:4px">Edit as text</div>
+    <textarea id="sidebar-decklist" name="decklist" rows="16"
+              data-original="{{ arena_text | replace('"', '&quot;') }}"
+              style="width:100%; box-sizing:border-box; font-family:monospace; font-size:12px; padding:8px; border:1px solid #dee2e6; border-radius:4px; resize:vertical">{{ arena_text }}</textarea>
+    <div id="sidebar-edit-error" style="display:none; color:#dc3545; font-size:12px; margin-top:4px"></div>
+  </div>
+  <div style="display:flex; flex-direction:column; gap:6px">
+    <button type="button" class="btn-action-primary" onclick="doSave(false)">Save</button>
+    <button type="button"
+            style="width:100%; padding:0.4rem 1rem; font-size:0.85rem; font-family:inherit; cursor:pointer; background:transparent; color:#731fa1; border:1px solid #731fa1; border-radius:4px"
+            onclick="doSave(true)">Save as New Version</button>
+    <button type="button"
+            style="width:100%; padding:0.4rem 1rem; font-size:0.85rem; font-family:inherit; cursor:pointer; background:transparent; color:rgba(51,51,51,0.5); border:1px solid #dee2e6; border-radius:4px"
+            onclick="cancelEditMode()">Cancel Edit</button>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+{% if viewing_version %}
+<div style="background:#fff3cd; border-bottom:1px solid #ffc107; padding:10px 20px; font-size:13px; display:flex; align-items:center; gap:12px; flex-shrink:0">
+  <span style="font-weight:600; color:#856404">Viewing version {{ current_version.version_num }} ({{ current_version.created_at[:10] }}) — read only</span>
+  <a href="/decks/{{ deck.id }}" style="color:#856404; text-decoration:underline; font-size:12px">Return to current</a>
+  {% if deck.is_potential or deck.is_saved %}
+  <button hx-post="/decks/{{ deck.id }}/versions/{{ current_version.id }}/restore"
+          hx-on::after-request="if(event.detail.successful){ window.location='/decks/{{ deck.id }}'; }"
+          style="margin-left:auto; padding:4px 12px; font-size:12px; cursor:pointer; background:#856404; color:#fff; border:none; border-radius:4px">
+    Restore this version
+  </button>
+  {% endif %}
+</div>
+{% endif %}
+<div id="deck-container" style="display:flex; flex-direction:column; height:100%; overflow:hidden">
+
+  <!-- Deck name header -->
+  <div style="padding:12px 20px 8px; border-bottom:1px solid #dee2e6; flex-shrink:0">
+    <form hx-patch="/decks/{{ deck.id }}/rename" hx-swap="none"
+          hx-on::after-request="if(event.detail.successful){ var inp=document.getElementById('deck-name-inp'); inp.dataset.original=inp.value; document.getElementById('deck-name-save').style.display='none'; }">
+      <div style="display:flex; align-items:center; gap:8px">
+        <input type="text" id="deck-name-inp" name="name"
+               value="{{ deck.name }}" data-original="{{ deck.name }}"
+               class="deck-name-inp" readonly>
+        <span id="deck-name-pencil" style="display:none; color:rgba(51,51,51,0.35); font-size:13px; pointer-events:none">✎</span>
+        <button type="submit" id="deck-name-save"
+                style="display:none; padding:3px 10px; font-size:12px; cursor:pointer; background:#731fa1; color:#fff; border:none; border-radius:4px">
+          Save
+        </button>
+      </div>
+    </form>
+    {% if deck.is_saved %}
+    <span style="font-size:11px; color:#198754; background:#d1e7dd; padding:2px 6px; border-radius:3px; margin-top:4px; display:inline-block">Saved</span>
+    {% elif deck.is_potential %}
+    <span style="font-size:11px; color:#731fa1; background:#f3e8fa; padding:2px 6px; border-radius:3px; margin-top:4px; display:inline-block">Potential</span>
+    {% endif %}
+  </div>
+
+  <!-- Missing card summary (potential/saved decks only) -->
+  {% if show_owned %}
+  {% set mb = missing_summary.mainboard %}
+  {% set sb = missing_summary.sideboard %}
+  {% set mb_total = mb.common + mb.uncommon + mb.rare + mb.mythic + mb.unknown %}
+  {% set sb_total = sb.common + sb.uncommon + sb.rare + sb.mythic + sb.unknown %}
+  {% if mb_total > 0 or sb_total > 0 %}
+  <div style="padding:8px 20px; border-bottom:1px solid #dee2e6; font-size:12px; background:#fffbf0; flex-shrink:0; display:flex; gap:24px; flex-wrap:wrap">
+    {% if mb_total > 0 %}
+    <div>
+      <span style="color:rgba(51,51,51,0.5); margin-right:6px">Mainboard missing:</span>
+      {% if mb.common %}<span style="margin-right:8px">{{ mb.common }}<span style="color:rgba(51,51,51,0.4)"> C</span></span>{% endif %}
+      {% if mb.uncommon %}<span style="margin-right:8px">{{ mb.uncommon }}<span style="color:rgba(51,51,51,0.4)"> U</span></span>{% endif %}
+      {% if mb.rare %}<span style="margin-right:8px">{{ mb.rare }}<span style="color:rgba(51,51,51,0.4)"> R</span></span>{% endif %}
+      {% if mb.mythic %}<span style="margin-right:8px">{{ mb.mythic }}<span style="color:rgba(51,51,51,0.4)"> M</span></span>{% endif %}
+      {% if mb.unknown %}<span style="margin-right:8px">{{ mb.unknown }}<span style="color:rgba(51,51,51,0.4)"> ?</span></span>{% endif %}
+    </div>
+    {% endif %}
+    {% if sb_total > 0 %}
+    <div>
+      <span style="color:rgba(51,51,51,0.5); margin-right:6px">Sideboard missing:</span>
+      {% if sb.common %}<span style="margin-right:8px">{{ sb.common }}<span style="color:rgba(51,51,51,0.4)"> C</span></span>{% endif %}
+      {% if sb.uncommon %}<span style="margin-right:8px">{{ sb.uncommon }}<span style="color:rgba(51,51,51,0.4)"> U</span></span>{% endif %}
+      {% if sb.rare %}<span style="margin-right:8px">{{ sb.rare }}<span style="color:rgba(51,51,51,0.4)"> R</span></span>{% endif %}
+      {% if sb.mythic %}<span style="margin-right:8px">{{ sb.mythic }}<span style="color:rgba(51,51,51,0.4)"> M</span></span>{% endif %}
+      {% if sb.unknown %}<span style="margin-right:8px">{{ sb.unknown }}<span style="color:rgba(51,51,51,0.4)"> ?</span></span>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endif %}
+
+  <!-- Card image + card list -->
+  <div style="display:flex; flex:1; overflow:hidden">
+
+    <!-- Card image -->
+    <div style="width:340px; flex-shrink:0; padding:16px; overflow-y:auto">
+      {% if first_arena_id %}
+      <img id="deck-card-img"
+           src="/images/{{ first_arena_id }}"
+           alt="Card preview"
+           style="width:100%; aspect-ratio:5/7; object-fit:cover; border-radius:8px; display:block; background:#1a1a2e">
+      {% else %}
+      <div style="width:100%; aspect-ratio:5/7; background:#1a1a2e; border-radius:8px; display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,0.3); font-size:13px">
+        No image
+      </div>
+      {% endif %}
+
+      {% if versions %}
+      <div style="margin-top:16px; padding-top:16px; border-top:1px solid #dee2e6">
+        <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:rgba(51,51,51,0.6); margin-bottom:8px">
+          Version History
+        </div>
+        <div style="display:flex; flex-direction:column; gap:4px">
+          {% for v in versions %}
+          <a href="/decks/{{ deck.id }}?version_id={{ v.id }}"
+             style="font-size:13px; color:#731fa1; text-decoration:none; padding:4px 8px; border-radius:3px; background:{% if current_version and current_version.id == v.id %}#f3e8fa{% else %}transparent{% endif %}">
+            v{{ v.version_num }} &mdash; {{ v.created_at[:10] }}
+            {% if v.source %}<span style="color:rgba(51,51,51,0.4); font-size:11px">({{ v.source }})</span>{% endif %}
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Card list: two-column type groups -->
+    <div style="flex:1; overflow-y:auto; padding:16px 20px">
+      {% if groups %}
+      <div class="deck-type-grid">
+        {% for group in groups %}
+        <div class="deck-type-group">
+          <div class="deck-type-header">
+            {{ group.label }} <span style="font-weight:400; color:rgba(51,51,51,0.5)">({{ group.count }})</span>
+          </div>
+          {% for line in group.lines %}
+          <div class="deck-line {% if show_owned and line.is_missing %}card-missing{% endif %}"
+               {% if line.arena_id %}
+               onmouseover="var img=document.getElementById('deck-card-img'); if(img) img.src='/images/{{ line.display_arena_id }}';"
+               hx-get="/cards/{{ line.display_arena_id }}/detail"
+               hx-target="#detail-panel-body"
+               hx-swap="innerHTML"
+               style="cursor:pointer"
+               {% endif %}>
+            {% if (deck.is_potential or deck.is_saved) and not viewing_version %}
+            <span class="deck-line-edit-controls" onclick="event.stopPropagation()">
+              <button class="qty-btn"
+                      hx-patch="/decks/{{ deck.id }}/lines/{{ line.id }}"
+                      hx-vals='{"quantity": {{ line.quantity - 1 }}}'
+                      hx-target="body"
+                      hx-swap="none"
+                      hx-on::after-request="if(event.detail.successful){ window.location.reload(); }"
+                      title="Decrease">-</button>
+              <span class="deck-line-qty">{{ line.quantity }}</span>
+              <button class="qty-btn"
+                      hx-patch="/decks/{{ deck.id }}/lines/{{ line.id }}"
+                      hx-vals='{"quantity": {{ line.quantity + 1 }}}'
+                      hx-target="body"
+                      hx-swap="none"
+                      hx-on::after-request="if(event.detail.successful){ window.location.reload(); }"
+                      title="Increase">+</button>
+            </span>
+            {% else %}
+            <span class="deck-line-qty">{{ line.quantity }}</span>
+            {% endif %}
+            <span class="deck-line-name">{{ line.card_name }}</span>
+            <span class="deck-line-mana">
+              {% if line.mana_cost %}
+                {{ mana_symbols_html(line.mana_cost, small=True) }}
+              {% endif %}
+            </span>
+            {% if show_owned %}
+            <span class="deck-line-owned {% if line.total_owned >= line.quantity %}owned-ok{% else %}owned-low{% endif %}">
+              {{ line.display_owned }}/{{ line.quantity }}
+            </span>
+            {% endif %}
+            {% if (deck.is_potential or deck.is_saved) and not viewing_version %}
+            <button class="delete-line-btn"
+                    hx-delete="/decks/{{ deck.id }}/lines/{{ line.id }}"
+                    hx-target="body"
+                    hx-swap="none"
+                    hx-confirm="Remove {{ line.card_name }}?"
+                    hx-on::after-request="if(event.detail.successful){ window.location.reload(); }"
+                    onclick="event.stopPropagation()"
+                    title="Remove card">&#x2715;</button>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p style="color:rgba(51,51,51,0.5); margin-top:40px; text-align:center">No cards in this deck.</p>
+      {% endif %}
+
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block page_scripts %}
+<style>
+  .deck-name-inp {
+    border: none;
+    border-bottom: 1px dashed transparent;
+    outline: none;
+    background: transparent;
+    font-size: 18px;
+    font-weight: 700;
+    color: #333;
+    font-family: inherit;
+    padding: 0 0 1px 0;
+    min-width: 60px;
+    transition: border-color 0.15s;
+  }
+  .deck-name-inp:hover { border-bottom-color: rgba(115,31,161,0.4); }
+  .deck-name-inp:focus { border-bottom-color: #731fa1; border-bottom-style: solid; }
+
+  .deck-type-grid {
+    columns: 2;
+    column-gap: 24px;
+  }
+  .deck-type-group {
+    break-inside: avoid;
+    margin-bottom: 20px;
+  }
+  .deck-type-header {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgba(51,51,51,0.6);
+    border-bottom: 1px solid #dee2e6;
+    padding-bottom: 4px;
+    margin-bottom: 6px;
+  }
+  .deck-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 4px;
+    border-radius: 3px;
+    font-size: 13px;
+    cursor: default;
+  }
+  .deck-line:hover { background: #f0e8f7; }
+  .deck-line-qty {
+    color: rgba(51,51,51,0.5);
+    min-width: 14px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+  .deck-line-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .deck-line-mana { display: flex; gap: 1px; flex-shrink: 0; }
+  .deck-line-owned { font-size: 11px; font-weight: 600; flex-shrink: 0; min-width: 32px; text-align: right; }
+  .card-missing .deck-line-name { color: rgba(51,51,51,0.4); }
+  .card-missing { background: #f5f5f5; }
+  .owned-ok { color: #198754; }
+  .owned-low { color: #dc3545; }
+  .deck-line-edit-controls {
+    display: none;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .deck-editing .deck-line-edit-controls { display: inline-flex; }
+  .qty-btn {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    font-size: 13px;
+    line-height: 1;
+    border: 1px solid #dee2e6;
+    border-radius: 3px;
+    background: transparent;
+    color: #731fa1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .qty-btn:hover { background: #f3e8fa; border-color: #731fa1; }
+  .delete-line-btn {
+    margin-left: auto;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    font-size: 11px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: rgba(51,51,51,0.3);
+    cursor: pointer;
+    flex-shrink: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .deck-editing .deck-line:hover .delete-line-btn { display: inline-flex; }
+  .delete-line-btn:hover { color: #dc3545; background: #fdecea; }
+</style>
+<script>
+  function enterEditMode() {
+    document.getElementById('deck-container').classList.add('deck-editing');
+    var nameInp = document.getElementById('deck-name-inp');
+    var pencil = document.getElementById('deck-name-pencil');
+    if (nameInp) nameInp.readOnly = false;
+    if (pencil) pencil.style.display = 'inline';
+    document.getElementById('sidebar-default').style.display = 'none';
+    document.getElementById('sidebar-edit').style.display = 'block';
+  }
+
+  function cancelEditMode() {
+    document.getElementById('deck-container').classList.remove('deck-editing');
+    var nameInp = document.getElementById('deck-name-inp');
+    var pencil = document.getElementById('deck-name-pencil');
+    if (nameInp) { nameInp.readOnly = true; }
+    if (pencil) pencil.style.display = 'none';
+    // Reset textarea and deck type to originals
+    var ta = document.getElementById('sidebar-decklist');
+    if (ta) ta.value = ta.dataset.original || '';
+    var fmtInp = document.getElementById('deck-type-inp');
+    if (fmtInp) fmtInp.value = fmtInp.dataset.original || '';
+    var errEl = document.getElementById('sidebar-edit-error');
+    if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+    document.getElementById('sidebar-default').style.display = 'block';
+    document.getElementById('sidebar-edit').style.display = 'none';
+  }
+
+  function doSave(createVersion) {
+    var ta = document.getElementById('sidebar-decklist');
+    var text = ta ? ta.value.trim() : '';
+    if (!text) {
+      var errEl = document.getElementById('sidebar-edit-error');
+      if (errEl) { errEl.textContent = 'Decklist cannot be empty'; errEl.style.display = 'block'; }
+      return;
+    }
+    var body = new URLSearchParams();
+    body.append('decklist', ta.value);
+    if (createVersion) body.append('create_version', '1');
+    fetch('/decks/{{ deck.id }}/replace', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: body.toString()
+    }).then(function(r) {
+      if (r.ok) { window.location.reload(); }
+      else {
+        r.json().then(function(j) {
+          var errEl = document.getElementById('sidebar-edit-error');
+          if (errEl) { errEl.textContent = j.detail || 'Save failed'; errEl.style.display = 'block'; }
+        }).catch(function() {
+          var errEl = document.getElementById('sidebar-edit-error');
+          if (errEl) { errEl.textContent = 'Save failed'; errEl.style.display = 'block'; }
+        });
+      }
+    });
+  }
+
+  document.getElementById('copy-deck-btn').addEventListener('click', function() {
+    var btn = this;
+    fetch('/decks/{{ deck.id }}/export')
+      .then(function(r) { return r.text(); })
+      .then(function(text) {
+        navigator.clipboard.writeText(text).then(function() {
+          btn.textContent = 'Copied!';
+          setTimeout(function() { btn.textContent = 'Copy to Clipboard'; }, 2000);
+        });
+      })
+      .catch(function(err) {
+        btn.textContent = 'Copy failed';
+        setTimeout(function() { btn.textContent = 'Copy to Clipboard'; }, 2000);
+      });
+  });
+
+  (function() {
+    var sizer = document.createElement('span');
+    sizer.style.cssText = 'font:700 18px/1 Inter,sans-serif;visibility:hidden;position:absolute;white-space:pre;pointer-events:none';
+    document.body.appendChild(sizer);
+
+    function fitInput() {
+      var inp = document.getElementById('deck-name-inp');
+      if (!inp) return;
+      sizer.textContent = inp.value || ' ';
+      inp.style.width = (sizer.offsetWidth + 4) + 'px';
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      var inp = document.getElementById('deck-name-inp');
+      if (inp) {
+        fitInput();
+        inp.addEventListener('input', function() {
+          fitInput();
+          document.getElementById('deck-name-save').style.display =
+            this.value.trim() !== this.dataset.original ? 'inline-block' : 'none';
+        });
+      }
+    });
+  })();
+</script>
+{% endblock %}

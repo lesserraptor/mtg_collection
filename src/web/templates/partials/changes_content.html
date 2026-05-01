@@ -1,0 +1,33 @@
+<div id="changes-content">
+
+  {% if total_pages > 1 %}
+  {% set page_range_start = [1, page - 3] | max %}
+  {% set page_range_end = [total_pages, page + 3] | min %}
+  <div class="pagination-bar" style="margin-bottom:24px;">
+    <span>Page <strong>{{ page }}</strong> of <strong>{{ total_pages }}</strong> &mdash; <strong>{{ total }}</strong> session{{ "s" if total != 1 else "" }} total</span>
+
+    <div class="pagination">
+      <button class="page-btn {% if page <= 1 %}disabled{% endif %}"
+              {% if page > 1 %}
+              hx-get="/changes?page={{ page - 1 }}"
+              hx-target="#changes-content" hx-swap="outerHTML" hx-push-url="true"
+              {% endif %}>«</button>
+
+      {% for p in range(page_range_start, page_range_end + 1) %}
+      <button class="page-btn {% if p == page %}active{% endif %}"
+              hx-get="/changes?page={{ p }}"
+              hx-target="#changes-content" hx-swap="outerHTML" hx-push-url="true">{{ p }}</button>
+      {% endfor %}
+
+      <button class="page-btn {% if page >= total_pages %}disabled{% endif %}"
+              {% if page < total_pages %}
+              hx-get="/changes?page={{ page + 1 }}"
+              hx-target="#changes-content" hx-swap="outerHTML" hx-push-url="true"
+              {% endif %}>»</button>
+    </div>
+  </div>
+  {% endif %}
+
+  {% include "partials/changes_feed.html" %}
+
+</div>

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Draft Tracker — MTG Collection{% endblock %}
+
+{% block sidebar %}
+{% include "partials/draft_sidebar.html" %}
+{% endblock %}
+
+{% block content %}
+<style>
+.draft-idle { color: #aaa; text-align: center; padding: 3rem; font-size: 1.1rem; grid-column: 1 / -1; }
+#pack-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.5rem; }
+</style>
+
+<div style="padding: 1.5rem;">
+  <div id="pack-grid">
+    {% if phase == "IDLE" or phase == "DRAFT_COMPLETE" %}
+      <p class="draft-idle">Waiting for draft to start...<br><small style="font-size:0.85em;color:#777;">Open MTGA and start a Premier, Traditional, or Quick Draft.</small></p>
+    {% elif phase == "DRAFT_STARTED" %}
+      <p class="draft-idle">Draft started: {{ set_code }} &mdash; loading ratings...</p>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+const es = new EventSource("/draft/stream");
+es.addEventListener("pack_update", function(e) {
+    const grid = document.getElementById("pack-grid");
+    if (grid) { grid.innerHTML = e.data; htmx.process(grid); }
+});
+</script>
+{% endblock %}

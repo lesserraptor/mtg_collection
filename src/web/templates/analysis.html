@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}Analysis — MTG Collection{% endblock %}
+
+{% block sidebar %}
+{% if view != 'sets' %}
+<form method="get" action="/analysis" id="analysis-filter-form">
+  <input type="hidden" name="view" value="{{ view }}" />
+  <input type="hidden" name="types_submitted" value="1" />
+  <div class="filter-section">
+    <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:4px">
+      <label class="filter-label" style="margin-bottom:0">Card Type</label>
+      <span style="font-size:11px">
+        <a href="#" onclick="document.querySelectorAll('#analysis-filter-form input[name=type_line]').forEach(cb=>cb.checked=true); this.closest('form').submit(); return false" style="color:#731fa1">All</a>
+        &nbsp;/&nbsp;
+        <a href="#" onclick="document.querySelectorAll('#analysis-filter-form input[name=type_line]').forEach(cb=>cb.checked=false); this.closest('form').submit(); return false" style="color:#731fa1">None</a>
+      </span>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:3px; margin-top:2px">
+      {% for t in ["Creature","Instant","Sorcery","Enchantment","Artifact","Planeswalker","Land","Battle"] %}
+      <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; padding:2px 0">
+        <input type="checkbox" name="type_line" value="{{ t }}"
+               {{ 'checked' if not types_submitted or t in selected_types else '' }}
+               onchange="this.closest('form').submit()" />
+        {{ t }}
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+  {% if types_submitted and (not selected_types or selected_types|length < 8) %}
+  <hr class="sidebar-divider" />
+  <a href="/analysis?view={{ view }}" class="clear-link">Clear type filter</a>
+  {% endif %}
+</form>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; flex-direction:column; height:100%">
+
+  <!-- Sub-tab strip -->
+  <div style="flex-shrink:0">
+    <div class="main-header" style="padding:16px 0 0; border-bottom:1px solid #dee2e6">
+      <div style="display:flex; gap:0">
+        <a href="/analysis" class="nav-tab {% if view == 'cards' %}active{% endif %}">Missing Cards</a>
+        <a href="/analysis?view=decks" class="nav-tab {% if view == 'decks' %}active{% endif %}">Missing Decks</a>
+        <a href="/sets" class="nav-tab {% if view == 'sets' %}active{% endif %}">Set Tracker</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="card-scroll-area" style="padding:24px">
+
+    {% if view == 'cards' %}
+    <!-- Missing Cards table -->
+    {% if missing_cards %}
+    <table style="width:100%; border-collapse:collapse">
+      <thead>
+        <tr style="border-bottom:2px solid #dee2e6; text-align:left; font-size:13px; color:rgba(51,51,51,0.6)">
+          <th style="padding:8px 12px">Card Name</th>
+          <th style="padding:8px 12px">Rarity</th>
+          <th style="padding:8px 12px">Missing</th>
+          <th style="padding:8px 12px; text-align:center"># Decks</th>
+          <th style="padding:8px 12px">In Decks</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in missing_cards %}
+        <tr style="border-bottom:1px solid #dee2e6">
+          <td style="padding:8px 12px">
+            {% if row.arena_id %}
+            <span hx-get="/cards/{{ row.arena_id }}/detail"
+                  hx-target="#detail-panel-body"
+                  hx-swap="innerHTML"
+                  style="cursor:pointer; color:#731fa1">{{ row.card_name }}</span>
+            {% else %}
+            {{ row.card_name }}
+            {% endif %}
+          </td>
+          <td style="padding:8px 12px">
+            {% set r = row.rarity|lower %}
+            {% if r in ['common','uncommon','rare','mythic'] %}
+            <span class="pill-{{ row.rarity[0]|upper }}">{{ row.rarity|capitalize }}</span>
+            {% else %}
+            Unknown
+            {% endif %}
+          </td>
+          <td style="padding:8px 12px">{{ row.copies_missing }}</td>
+          <td style="padding:8px 12px; text-align:center">{{ row.deck_count }}</td>
+          <td style="padding:8px 12px">
+            {% set decks = missing_cards_decks.get(row.card_name|lower, []) %}
+            {% for deck in decks %}
+              <a href="/decks/{{ deck.id }}" style="color:#731fa1">[{{ loop.index }}]</a>{% if not loop.last %} {% endif %}
+            {% endfor %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="color:rgba(51,51,51,0.5); margin-top:40px; text-align:center">
+      No missing cards — you have everything needed for your potential decks.
+    </p>
+    {% endif %}
+
+    {% elif view == 'decks' %}
+    <!-- Missing Decks table -->
+    {% if missing_decks %}
+    <table style="width:100%; border-collapse:collapse">
+      <thead>
+        <tr style="border-bottom:2px solid #dee2e6; text-align:left; font-size:13px; color:rgba(51,51,51,0.6)">
+          <th style="padding:8px 12px">Deck Name</th>
+          <th style="padding:8px 12px">Missing Cards</th>
+          <th style="padding:8px 12px">Total Copies</th>
+          <th style="padding:8px 12px">Wildcards Needed</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in missing_decks %}
+        <tr style="border-bottom:1px solid #dee2e6">
+          <td style="padding:8px 12px">
+            <a href="/decks/{{ row.id }}" style="color:#731fa1">{{ row.name }}</a>
+          </td>
+          <td style="padding:8px 12px">{{ row.distinct_missing }}</td>
+          <td style="padding:8px 12px">{{ row.total_missing }}</td>
+          <td style="padding:8px 12px">
+            {% if row.wc_common %}<span style="margin-right:6px">{{ row.wc_common }}<span style="color:rgba(51,51,51,0.4)"> C</span></span>{% endif %}
+            {% if row.wc_uncommon %}<span style="margin-right:6px">{{ row.wc_uncommon }}<span style="color:rgba(51,51,51,0.4)"> U</span></span>{% endif %}
+            {% if row.wc_rare %}<span style="margin-right:6px">{{ row.wc_rare }}<span style="color:rgba(51,51,51,0.4)"> R</span></span>{% endif %}
+            {% if row.wc_mythic %}<span style="margin-right:6px">{{ row.wc_mythic }}<span style="color:rgba(51,51,51,0.4)"> M</span></span>{% endif %}
+            {% if row.wc_unknown %}<span style="margin-right:6px">{{ row.wc_unknown }}<span style="color:rgba(51,51,51,0.4)"> ?</span></span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="color:rgba(51,51,51,0.5); margin-top:40px; text-align:center">
+      All your potential and saved decks are complete.
+    </p>
+    {% endif %}
+
+    {% elif view == 'sets' %}
+    {% include "partials/sets_content.html" %}
+
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

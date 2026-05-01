@@ -1,0 +1,166 @@
+<div id="sets-content">
+  {% if sets %}
+
+  <!-- Pickers row -->
+  <div style="display:flex; align-items:center; gap:16px; margin-bottom:14px; flex-wrap:wrap;">
+
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span style="font-size:0.82em; color:var(--text-muted);">Sets:</span>
+      <div style="display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; font-size:0.82em;">
+        <button id="sets-scope-primary"
+                onclick="setSetsScope('primary')"
+                style="padding:4px 12px; border:none; background:var(--primary); color:#fff; cursor:pointer; font-size:inherit;">
+          Primary Releases
+        </button>
+        <button id="sets-scope-all"
+                onclick="setSetsScope('all')"
+                style="padding:4px 12px; border:none; background:none; color:var(--text-muted); cursor:pointer; font-size:inherit;">
+          Everything
+        </button>
+      </div>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span style="font-size:0.82em; color:var(--text-muted);">Completion by:</span>
+      <div style="display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; font-size:0.82em;">
+        <button id="sets-mode-distinct"
+                onclick="setSetsMode('distinct')"
+                style="padding:4px 12px; border:none; background:var(--primary); color:#fff; cursor:pointer; font-size:inherit;">
+          Distinct Cards
+        </button>
+        <button id="sets-mode-copies"
+                onclick="setSetsMode('copies')"
+                style="padding:4px 12px; border:none; background:none; color:var(--text-muted); cursor:pointer; font-size:inherit;">
+          Total Copies
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="display:flex; flex-direction:column; gap:6px;">
+    {% for set in sets %}
+    {% set distinct_pct = (set.have_any / set.total_cards * 100) | round(0) | int if set.total_cards > 0 else 0 %}
+    {% set copies_pct   = (set.owned_copies / (set.total_cards * 4) * 100) | round(0) | int if set.total_cards > 0 else 0 %}
+    <div class="set-row"
+         data-set-type="{{ set.set_type }}"
+         hx-get="/sets/{{ set.set_code }}/detail"
+         hx-target="#set-modal-body"
+         hx-swap="innerHTML"
+         style="cursor:pointer; padding:10px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; transition:border-color 0.15s;"
+         onmouseover="this.style.borderColor='var(--primary)'"
+         onmouseout="this.style.borderColor='var(--border)'">
+
+      <!-- Set icon + name -->
+      <div style="display:flex; align-items:center; gap:8px; min-width:220px;">
+        {% if set.icon_svg_uri %}
+        <img src="{{ set.icon_svg_uri }}" width="22" height="22"
+             style="opacity:0.7; flex-shrink:0;"
+             onerror="this.style.display='none'" />
+        {% endif %}
+        <div>
+          <div style="font-weight:600; font-size:0.9rem; color:var(--text);">{{ set.set_name }}</div>
+          <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">{{ set.set_code }}</div>
+        </div>
+      </div>
+
+      <!-- Completion bar -->
+      <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:160px;">
+        {% if set.total_cards > 0 %}
+        <div style="flex:1; height:6px; background:var(--bg-secondary); border-radius:3px; overflow:hidden; min-width:80px;">
+          <div class="set-bar"
+               data-distinct="{{ distinct_pct }}"
+               data-copies="{{ copies_pct }}"
+               style="width:{{ distinct_pct }}%; height:100%; background:var(--primary); border-radius:3px; transition:width 0.2s;"></div>
+        </div>
+        <span class="set-pct"
+              data-distinct="{{ distinct_pct }}% ({{ set.have_any }}/{{ set.total_cards }})"
+              data-copies="{{ copies_pct }}% ({{ set.owned_copies }}/{{ set.total_cards * 4 }})"
+              style="color:var(--text-muted); font-size:0.82em; white-space:nowrap; min-width:110px;">
+          {{ distinct_pct }}% <span style="color:var(--border);">({{ set.have_any }}/{{ set.total_cards }})</span>
+        </span>
+        {% endif %}
+      </div>
+
+      {% set total_wc = set.mythic_wildcards + set.rare_wildcards + set.uncommon_wildcards + set.common_wildcards %}
+      <span class="set-missing"
+            data-distinct="{{ set.missing }} missing"
+            data-copies="{{ total_wc }} missing"
+            style="color:#dc3545; font-size:0.82em; min-width:80px; text-align:right; white-space:nowrap;">
+        {{ set.missing }} missing
+      </span>
+
+      <!-- Rarity badges (distinct = cards with 0 owned; copies = wildcards to complete to 4) -->
+      <span style="display:flex; gap:5px; flex-wrap:wrap;">
+        <span class="set-badge-M rarity-label rarity-label-M"
+              data-distinct="{{ set.mythic_missing }}"   data-copies="{{ set.mythic_wildcards }}"
+              style="{% if not set.mythic_missing %}display:none{% endif %}">M {{ set.mythic_missing }}</span>
+        <span class="set-badge-R rarity-label rarity-label-R"
+              data-distinct="{{ set.rare_missing }}"     data-copies="{{ set.rare_wildcards }}"
+              style="{% if not set.rare_missing %}display:none{% endif %}">R {{ set.rare_missing }}</span>
+        <span class="set-badge-U rarity-label rarity-label-U"
+              data-distinct="{{ set.uncommon_missing }}" data-copies="{{ set.uncommon_wildcards }}"
+              style="{% if not set.uncommon_missing %}display:none{% endif %}">U {{ set.uncommon_missing }}</span>
+        <span class="set-badge-C rarity-label rarity-label-C"
+              data-distinct="{{ set.common_missing }}"   data-copies="{{ set.common_wildcards }}"
+              style="{% if not set.common_missing %}display:none{% endif %}">C {{ set.common_missing }}</span>
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <script>
+    var _PRIMARY_TYPES = {{ primary_set_types | tojson }};
+
+    function setSetsScope(scope) {
+      document.querySelectorAll('.set-row').forEach(function(row) {
+        var t = row.dataset.setType;
+        row.style.display = (scope === 'all' || _PRIMARY_TYPES.indexOf(t) !== -1) ? '' : 'none';
+      });
+      var btnPrimary = document.getElementById('sets-scope-primary');
+      var btnAll     = document.getElementById('sets-scope-all');
+      if (scope === 'primary') {
+        btnPrimary.style.background = 'var(--primary)'; btnPrimary.style.color = '#fff';
+        btnAll.style.background = 'none'; btnAll.style.color = 'var(--text-muted)';
+      } else {
+        btnAll.style.background = 'var(--primary)'; btnAll.style.color = '#fff';
+        btnPrimary.style.background = 'none'; btnPrimary.style.color = 'var(--text-muted)';
+      }
+    }
+
+    function setSetsMode(mode) {
+      document.querySelectorAll('.set-bar').forEach(function(bar) {
+        bar.style.width = bar.dataset[mode] + '%';
+      });
+      document.querySelectorAll('.set-pct').forEach(function(el) {
+        el.textContent = el.dataset[mode];
+      });
+      document.querySelectorAll('.set-missing').forEach(function(el) {
+        el.textContent = el.dataset[mode];
+      });
+      ['M','R','U','C'].forEach(function(r) {
+        document.querySelectorAll('.set-badge-' + r).forEach(function(el) {
+          var val = el.dataset[mode];
+          el.textContent = r + ' ' + val;
+          el.style.display = (val === '0') ? 'none' : '';
+        });
+      });
+      var btnDistinct = document.getElementById('sets-mode-distinct');
+      var btnCopies   = document.getElementById('sets-mode-copies');
+      if (mode === 'distinct') {
+        btnDistinct.style.background = 'var(--primary)'; btnDistinct.style.color = '#fff';
+        btnCopies.style.background = 'none'; btnCopies.style.color = 'var(--text-muted)';
+      } else {
+        btnCopies.style.background = 'var(--primary)'; btnCopies.style.color = '#fff';
+        btnDistinct.style.background = 'none'; btnDistinct.style.color = 'var(--text-muted)';
+      }
+    }
+
+    // Default: primary releases only
+    setSetsScope('primary');
+  </script>
+
+  {% else %}
+  <p class="empty-state">No sets found.</p>
+  {% endif %}
+</div>

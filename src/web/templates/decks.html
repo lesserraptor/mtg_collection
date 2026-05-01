@@ -1,0 +1,330 @@
+{% extends "base.html" %}
+
+{% block title %}Decks — MTG Collection{% endblock %}
+
+{% block sidebar %}
+<div>
+  <button id="deck-scan-btn" type="button"
+    onclick="startDeckScan(this)"
+    class="btn-action-primary">
+    Import decks from Arena logs
+  </button>
+  <div id="deck-scan-progress" style="display:none; margin-top:6px">
+    <div style="background:#e9ecef; border-radius:3px; height:6px; overflow:hidden">
+      <div id="deck-scan-bar" style="background:#731fa1; height:100%; width:0%; transition:width 0.3s"></div>
+    </div>
+    <div id="deck-scan-msg" style="font-size:11px; color:#666; margin-top:4px"></div>
+  </div>
+</div>
+<div class="filter-section">
+  <div class="filter-label">Add Deck</div>
+  <div id="import-error" style="color:#dc3545; font-size:12px; margin-bottom:4px; display:none"></div>
+  <form hx-post="/decks/import"
+        hx-target="#import-error"
+        hx-swap="innerHTML"
+        hx-on::after-request="if(event.detail.successful && event.detail.xhr.status===204){ let redir=event.detail.xhr.getResponseHeader('HX-Redirect'); if(redir) window.location=redir; } else if(!event.detail.successful){ document.getElementById('import-error').style.display='block'; }">
+    <input type="hidden" name="mode" value="{{ mode }}">
+    <textarea name="decklist" rows="8" class="filter-input"
+      style="width:100%; resize:vertical; font-family:monospace; font-size:12px"
+      placeholder="Paste Arena decklist here..."></textarea>
+    <button type="submit" class="pill active"
+      style="width:100%; margin-top:8px; cursor:pointer; padding:6px 10px; font-size:13px">
+      Import
+    </button>
+  </form>
+</div>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; flex-direction:column; height:100%">
+  <div style="position:relative; flex-shrink:0">
+    <div class="main-header" style="padding:16px 0 0; border-bottom:1px solid #dee2e6">
+      <div style="display:flex; gap:0">
+        <a href="/decks" class="nav-tab {% if mode == 'decks' %}active{% endif %}">Arena Decks</a>
+        <a href="/decks?potential=1" class="nav-tab {% if mode == 'potential' %}active{% endif %}">Potential Decks</a>
+        <a href="/decks?saved=1" class="nav-tab {% if mode == 'saved' %}active{% endif %}">Saved Decks</a>
+      </div>
+    </div>
+    <!-- Bulk bar overlays the tab strip — no layout shift -->
+    <div id="bulk-bar" style="display:none; position:absolute; top:0; left:0; right:0; bottom:0; align-items:center; gap:8px; padding:0 16px; background:#f3e8fa; border-bottom:1px solid #d9b8f0; font-size:13px; z-index:10">
+    <span id="bulk-count" style="color:#731fa1; font-weight:600; margin-right:4px"></span>
+    {% if mode != 'decks' %}<button onclick="bulkAction('delete')" style="padding:4px 12px; font-size:12px; cursor:pointer; border:1px solid #dc3545; background:transparent; color:#dc3545; border-radius:4px">Delete</button>{% endif %}
+    <button onclick="bulkAction('move-to-saved')" style="padding:4px 12px; font-size:12px; cursor:pointer; border:1px solid #0d6efd; background:transparent; color:#0d6efd; border-radius:4px">Move to Saved</button>
+    <button onclick="bulkAction('move-to-potential')" style="padding:4px 12px; font-size:12px; cursor:pointer; border:1px solid #198754; background:transparent; color:#198754; border-radius:4px">Move to Potential</button>
+    <button onclick="clearSelection()" style="margin-left:auto; padding:4px 10px; font-size:12px; cursor:pointer; border:1px solid #aaa; background:transparent; color:#666; border-radius:4px">Clear</button>
+    </div><!-- /bulk-bar -->
+  </div><!-- /tab+bulk wrapper -->
+
+  <div class="card-scroll-area" style="padding:24px">
+    {% if request.query_params.get('log_ok') %}
+    <div style="background:#d1e7dd; color:#0a3622; border:1px solid #a3cfbb; border-radius:4px; padding:8px 12px; margin-bottom:12px; font-size:13px">
+      Imported {{ request.query_params.get('log_ok') }} deck(s) from game log.
+    </div>
+    {% elif request.query_params.get('log_err') == 'no_file' %}
+    <div style="background:#f8d7da; color:#58151c; border:1px solid #f1aeb5; border-radius:4px; padding:8px 12px; margin-bottom:12px; font-size:13px">
+      Game log not found. Launch MTGA first.
+    </div>
+    {% elif request.query_params.get('log_err') == 'no_decks' %}
+    <div style="background:#f8d7da; color:#58151c; border:1px solid #f1aeb5; border-radius:4px; padding:8px 12px; margin-bottom:12px; font-size:13px">
+      No decks found in game log. Launch MTGA and open your deck list.
+    </div>
+    {% elif request.query_params.get('log_err') == 'parse_failed' %}
+    <div style="background:#f8d7da; color:#58151c; border:1px solid #f1aeb5; border-radius:4px; padding:8px 12px; margin-bottom:12px; font-size:13px">
+      Failed to parse game log. Check server logs.
+    </div>
+    {% elif request.query_params.get('scan_ok') %}
+    <div style="background:#d1e7dd; color:#0a3622; border:1px solid #a3cfbb; border-radius:4px; padding:8px 12px; margin-bottom:12px; font-size:13px">
+      Scan decisions applied: {{ request.query_params.get('scan_ok') }}
+    </div>
+    {% endif %}
+    {% if decks %}
+    <table style="width:100%; border-collapse:collapse">
+      <thead>
+        {% set tab_param = '&saved=1' if mode == 'saved' else '&potential=1' if mode == 'potential' else '' %}
+        <tr style="border-bottom:2px solid #dee2e6; text-align:left; font-size:13px; color:rgba(51,51,51,0.6)">
+          <th style="padding:8px 8px 8px 12px; width:32px">
+            <input type="checkbox" id="select-all" onchange="toggleAll(this.checked)" style="cursor:pointer">
+          </th>
+          <th style="padding:8px 12px">
+            <a href="?sort={% if sort == 'name' %}name_desc{% elif sort == 'name_desc' %}name{% else %}name{% endif %}{{ tab_param }}"
+               style="color:inherit; text-decoration:none; white-space:nowrap">
+              Deck Name{% if sort == 'name' %} ▲{% elif sort == 'name_desc' %} ▼{% endif %}
+            </a>
+          </th>
+          <th style="padding:8px 12px">
+            <a href="?sort={% if sort == 'format' %}format_desc{% elif sort == 'format_desc' %}format{% else %}format{% endif %}{{ tab_param }}"
+               style="color:inherit; text-decoration:none; white-space:nowrap">
+              Format{% if sort == 'format' %} ▲{% elif sort == 'format_desc' %} ▼{% endif %}
+            </a>
+          </th>
+          <th style="padding:8px 12px">
+            <a href="?sort={% if sort == 'cards' %}cards_asc{% elif sort == 'cards_asc' %}cards{% else %}cards{% endif %}{{ tab_param }}"
+               style="color:inherit; text-decoration:none; white-space:nowrap">
+              Cards{% if sort == 'cards' %} ▼{% elif sort == 'cards_asc' %} ▲{% endif %}
+            </a>
+          </th>
+          <th style="padding:8px 12px">Owned</th>
+          <th style="padding:8px 12px">
+            <a href="?sort={% if sort == 'imported' %}imported_asc{% elif sort == 'imported_asc' %}imported{% else %}imported{% endif %}{{ tab_param }}"
+               style="color:inherit; text-decoration:none; white-space:nowrap">
+              Imported{% if sort == 'imported' %} ▼{% elif sort == 'imported_asc' %} ▲{% endif %}
+            </a>
+          </th>
+        </tr>
+      </thead>
+      <tbody id="deck-tbody">
+        {% include "partials/deck_list.html" %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="color:rgba(51,51,51,0.5); margin-top:40px; text-align:center">
+      {% if mode == 'decks' %}
+        Arena decks will appear here once synced from MTGA.
+      {% elif mode == 'saved' %}
+        No saved decks yet.
+      {% else %}
+        No potential decks yet. Paste an Arena decklist in the sidebar to import one.
+      {% endif %}
+    </p>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
+
+{% block body_end %}
+<!-- Scan Decision Dialog -->
+<div id="decision-dialog-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1050" onclick="closeDecisionDialog()"></div>
+<div id="decision-dialog-modal" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#fff; border-radius:6px; box-shadow:0 8px 32px rgba(0,0,0,0.18); z-index:1051; width:90%; max-width:640px; max-height:80vh; flex-direction:column">
+  <div id="decision-dialog-body"></div>
+</div>
+{% endblock %}
+
+{% block page_scripts %}
+<script>
+  function getSelected() {
+    return [...document.querySelectorAll('.deck-cb:checked')].map(cb => cb.value);
+  }
+
+  function updateBulkBar() {
+    const ids = getSelected();
+    const bar = document.getElementById('bulk-bar');
+    const count = document.getElementById('bulk-count');
+    if (ids.length > 0) {
+      bar.style.display = 'flex';
+      count.textContent = ids.length + ' selected';
+    } else {
+      bar.style.display = 'none';
+      document.getElementById('select-all').checked = false;
+    }
+  }
+
+  function toggleAll(checked) {
+    document.querySelectorAll('.deck-cb').forEach(cb => cb.checked = checked);
+    updateBulkBar();
+  }
+
+  function clearSelection() {
+    document.querySelectorAll('.deck-cb').forEach(cb => cb.checked = false);
+    document.getElementById('select-all').checked = false;
+    updateBulkBar();
+  }
+
+  function startRename(id, current) {
+    document.getElementById('name-display-' + id).style.display = 'none';
+    var edit = document.getElementById('name-edit-' + id);
+    edit.style.display = 'flex';
+    var inp = document.getElementById('name-inp-' + id);
+    inp.value = current;
+    inp.focus();
+    inp.select();
+    inp.onkeydown = function(e) {
+      if (e.key === 'Enter') saveRename(id);
+      if (e.key === 'Escape') cancelRename(id);
+    };
+  }
+
+  function cancelRename(id) {
+    document.getElementById('name-edit-' + id).style.display = 'none';
+    document.getElementById('name-display-' + id).style.display = 'flex';
+  }
+
+  function saveRename(id) {
+    var name = document.getElementById('name-inp-' + id).value.trim();
+    if (!name) return;
+    var fd = new FormData(); fd.append('name', name);
+    fetch('/decks/' + id + '/rename', {method: 'PATCH', body: fd})
+      .then(function(r) {
+        if (r.ok) {
+          document.querySelector('#name-display-' + id + ' a').textContent = name;
+          cancelRename(id);
+        }
+      });
+  }
+
+  function bulkAction(action) {
+    const ids = getSelected();
+    if (!ids.length) return;
+    if (action === 'delete' && !confirm(`Delete ${ids.length} deck(s)?`)) return;
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/decks/bulk';
+    ids.forEach(id => {
+      const inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = 'ids'; inp.value = id;
+      form.appendChild(inp);
+    });
+    const act = document.createElement('input');
+    act.type = 'hidden'; act.name = 'action'; act.value = action;
+    form.appendChild(act);
+    document.body.appendChild(form);
+    form.submit();
+  }
+
+  function startDeckScan(btn) {
+    btn.disabled = true;
+    btn.textContent = 'Scanning\u2026';
+    var prog = document.getElementById('deck-scan-progress');
+    var bar = document.getElementById('deck-scan-bar');
+    var msg = document.getElementById('deck-scan-msg');
+    prog.style.display = 'block';
+    bar.style.width = '0%';
+    msg.textContent = '';
+
+    fetch('/decks/refresh-decks', {method: 'POST'})
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var es = new EventSource('/decks/scan-stream?token=' + data.token);
+        es.addEventListener('progress', function(e) {
+          var evt = JSON.parse(e.data);
+          if (evt.pct !== undefined) bar.style.width = evt.pct + '%';
+          if (evt.message) msg.textContent = evt.message;
+          if (evt.stage === 'done') {
+            es.close();
+            btn.disabled = false;
+            btn.textContent = 'Import decks from Arena logs';
+            if (evt.status === 'scan_ok') {
+              fetch('/decks/scan-review')
+                .then(function(r) {
+                  if (r.status === 204) {
+                    window.location.reload();
+                    return;
+                  }
+                  return r.text();
+                })
+                .then(function(html) {
+                  if (!html) return;
+                  document.getElementById('decision-dialog-body').innerHTML = html;
+                  openDecisionDialog();
+                })
+                .catch(function() {
+                  window.location.reload();
+                });
+            } else {
+              msg.style.color = '#dc3545';
+              msg.textContent = evt.message || 'Scan failed.';
+              setTimeout(function() { prog.style.display = 'none'; msg.style.color = '#666'; }, 5000);
+            }
+          }
+        });
+        es.onerror = function() {
+          es.close();
+          btn.disabled = false;
+          btn.textContent = 'Import decks from Arena logs';
+          msg.style.color = '#dc3545';
+          msg.textContent = 'Connection error.';
+          setTimeout(function() { prog.style.display = 'none'; msg.style.color = '#666'; }, 3000);
+        };
+      })
+      .catch(function() {
+        btn.disabled = false;
+        btn.textContent = 'Import decks from Arena logs';
+      });
+  }
+
+  function openDecisionDialog() {
+    document.getElementById('decision-dialog-overlay').style.display = 'block';
+    document.getElementById('decision-dialog-modal').style.display = 'flex';
+  }
+
+  function closeDecisionDialog() {
+    document.getElementById('decision-dialog-overlay').style.display = 'none';
+    document.getElementById('decision-dialog-modal').style.display = 'none';
+    window.location.reload();
+  }
+
+  function applyAll() {
+    var changed = {};
+    document.querySelectorAll('#decision-dialog-body input[type="radio"][name^="changed_"]:checked').forEach(function(r) {
+      changed[r.name.replace('changed_', '')] = r.value;
+    });
+    var missing = {};
+    document.querySelectorAll('#decision-dialog-body input[type="radio"][name^="missing_"]:checked').forEach(function(r) {
+      missing[r.name.replace('missing_', '')] = r.value;
+    });
+    fetch('/decks/scan-decisions', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({changed: changed, missing: missing})
+    }).then(function(r) { return r.json(); })
+      .then(function(data) {
+        var parts = [];
+        if (data.imported) parts.push(data.imported + ' imported');
+        if (data.versioned) parts.push(data.versioned + ' updated');
+        if (data.replaced) parts.push(data.replaced + ' replaced');
+        if (data.archived) parts.push(data.archived + ' archived');
+        if (data.deleted) parts.push(data.deleted + ' deleted');
+        var summary = parts.length ? parts.join(', ') : 'no changes';
+        window.location.href = '/decks?scan_ok=' + encodeURIComponent(summary);
+      })
+      .catch(function() { window.location.reload(); });
+  }
+
+  function cancelDecisions() {
+    fetch('/decks/cancel-scan', {method: 'POST'})
+      .then(function() { window.location.reload(); })
+      .catch(function() { window.location.reload(); });
+  }
+</script>
+{% endblock %}

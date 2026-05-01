@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Set Tracker — MTG Collection{% endblock %}
+{% block sidebar %}{% endblock %}
+{% block content %}
+<div class="card-scroll-area" style="max-width:900px;">
+  <div class="main-header">
+    <h1 style="margin:0 0 4px; font-size:1.4rem;">Set Tracker</h1>
+    <p style="margin:0 0 20px; color:#888; font-size:0.9em;">Wildcard costs to complete each set</p>
+  </div>
+  {% include "partials/sets_content.html" %}
+</div>
+{% endblock %}

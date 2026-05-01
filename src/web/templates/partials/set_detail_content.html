@@ -1,0 +1,127 @@
+<div id="set-detail-content">
+
+  <div style="display:flex; align-items:center; gap:12px; margin-bottom:20px;">
+    {% if breakdown.icon_svg_uri %}
+    <img src="{{ breakdown.icon_svg_uri }}" width="28" height="28" style="opacity:0.7; flex-shrink:0;" onerror="this.style.display='none'" />
+    {% endif %}
+    <div style="flex:1;">
+      <h2 style="margin:0; font-size:1.2rem; font-weight:700; color:var(--text);">{{ breakdown.set_name }}</h2>
+      <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">{{ breakdown.set_code }}</div>
+    </div>
+    <button onclick="closeSetModal()"
+            style="background:none; border:1px solid var(--border); border-radius:6px; padding:5px 12px; font-size:0.82em; color:var(--text-muted); cursor:pointer; white-space:nowrap;">
+      &larr; Back to Sets
+    </button>
+  </div>
+
+  <!-- Per-rarity summary table -->
+  {% if breakdown.by_rarity %}
+  <table style="width:100%; border-collapse:collapse; margin-bottom:28px; font-size:0.88em;">
+    <thead>
+      <tr style="color:var(--text-muted); text-align:left; border-bottom:1px solid var(--border);">
+        <th style="padding:6px 10px;">Rarity</th>
+        <th style="padding:6px 10px; text-align:right;">Total</th>
+        <th style="padding:6px 10px; text-align:right;">Have 4</th>
+        <th style="padding:6px 10px; text-align:right;">Missing</th>
+        <th style="padding:6px 10px; text-align:right;">Wildcards</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in breakdown.by_rarity %}
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:6px 10px;">
+          <span class="rarity-label rarity-label-{{ row.rarity[0]|upper }}">
+            {{ row.rarity | capitalize }}
+          </span>
+        </td>
+        <td style="padding:6px 10px; text-align:right; color:var(--text-muted);">{{ row.total }}</td>
+        <td style="padding:6px 10px; text-align:right; color:var(--text-muted);">{{ row.have_4 }}</td>
+        <td style="padding:6px 10px; text-align:right; color:{% if row.missing > 0 %}#dc3545{% else %}#198754{% endif %};">{{ row.missing }}</td>
+        <td style="padding:6px 10px; text-align:right; font-weight:600; color:var(--text);">{{ row.wildcards_needed }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <!-- Filter chips: rarity + owned status -->
+  <div id="set-filter-bar" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; align-items:center;">
+    <!-- Owned filter -->
+    <div style="display:flex; gap:4px; align-items:center;">
+      <span style="font-size:0.75rem; color:var(--text-muted); margin-right:4px;">Show:</span>
+      {% for val, label in [("","All incomplete"),("missing","0 owned"),("partial","1-3 owned")] %}
+      <span class="pill {% if owned_filter == val %}active{% endif %}"
+            style="cursor:pointer;"
+            hx-get="/sets/{{ set_code }}/detail"
+            hx-vals='{"owned_filter": "{{ val }}", "rarity_filter": {{ rarity_filter | tojson }}}'
+            hx-target="#set-modal-body"
+            hx-swap="innerHTML">
+        {{ label }}
+      </span>
+      {% endfor %}
+    </div>
+    <!-- Rarity filter -->
+    <div style="display:flex; gap:4px; align-items:center;">
+      <span style="font-size:0.75rem; color:var(--text-muted); margin-right:4px;">Rarity:</span>
+      {% for r in ["mythic","rare","uncommon","common"] %}
+      <span class="pill rarity-filter pill-{{ r[0]|upper }} {% if r in rarity_filter %}active{% endif %}"
+            style="cursor:pointer;"
+            hx-get="/sets/{{ set_code }}/detail"
+            hx-vals='{"owned_filter": "{{ owned_filter }}", "rarity_filter": {{ ((rarity_filter | reject("equalto", r) | list) if r in rarity_filter else (rarity_filter + [r])) | tojson }}}'
+            hx-target="#set-modal-body"
+            hx-swap="innerHTML">
+        {{ r | capitalize }}
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Missing cards section -->
+  <div id="set-card-grid-{{ set_code }}">
+    {% if breakdown.missing_cards %}
+    <h3 style="margin:0 0 14px; font-size:0.95rem; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:0.04em;">Missing Cards</h3>
+    <div class="card-grid">
+      {% for card in breakdown.missing_cards %}
+      <div class="card-tile"
+           hx-get="/cards/{{ card.arena_id }}/detail"
+           hx-target="#detail-panel-body"
+           hx-swap="innerHTML">
+        <div class="card-img-wrap">
+          {% if card.image_uri_front %}
+          <img src="/images/{{ card.arena_id }}"
+               alt="{{ card.name }}"
+               loading="lazy"
+               onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'" />
+          <div class="card-img-fallback">{{ card.name }}</div>
+          {% else %}
+          <div class="card-img-placeholder" style="display:flex;">{{ card.name }}</div>
+          {% endif %}
+          <div class="qty-badge zero">{{ card.owned_quantity }}</div>
+          {% if card.deck_demand is defined and card.deck_demand > 0 %}
+          <div class="demand-badge" title="{{ card.deck_demand }} deck(s) want this card">
+            {{ card.deck_demand }}
+          </div>
+          {% endif %}
+        </div>
+
+        <div class="rarity-stripe rarity-{{ card.rarity[0]|upper if card.rarity else 'C' }}"></div>
+
+        <div class="card-meta">
+          <div class="card-name" title="{{ card.name }}">{{ card.name }}</div>
+          <div class="card-type">{{ card.type_line or '' }}</div>
+          <div class="card-footer">
+            <span class="rarity-label rarity-label-{{ card.rarity[0]|upper if card.rarity else 'C' }}">
+              {{ card.rarity | capitalize if card.rarity else '' }}
+            </span>
+            <span class="owned-line missing">{{ card.owned_quantity }} of 4</span>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">No cards match the selected filters.</p>
+    {% endif %}
+  </div>
+
+</div>

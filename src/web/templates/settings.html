@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+{% block title %}Settings — MTG Collection{% endblock %}
+{% block sidebar %}{% endblock %}
+{% block content %}
+<div class="main-header">
+  <h2 class="main-title">Settings</h2>
+</div>
+<div style="overflow-y:auto; flex:1; min-height:0;"><div style="padding:24px; max-width:600px">
+
+  {% if status == 'mtga_ok' %}
+  <div style="background:#1a3d2b; color:#2ecc71; border:1px solid #2ecc71; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    MTGA Card Database updated successfully.
+  </div>
+  {% elif status == 'mtga_err_no_file' %}
+  <div style="background:#3d1a1a; color:#e74c3c; border:1px solid #e74c3c; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    MTGA Card Database not found. Check MTGA_CARD_DB_PATH or MTGA installation.
+  </div>
+  {% elif status == 'mtga_err' %}
+  <div style="background:#3d1a1a; color:#e74c3c; border:1px solid #e74c3c; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    MTGA Card Database reload failed. Check server logs.
+  </div>
+  {% elif status == 'scryfall_ok' %}
+  <div style="background:#1a3d2b; color:#2ecc71; border:1px solid #2ecc71; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    Scryfall data updated successfully.
+  </div>
+  {% elif status == 'scryfall_err' %}
+  <div style="background:#3d1a1a; color:#e74c3c; border:1px solid #e74c3c; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    Scryfall refresh failed. Check server logs.
+  </div>
+  {% elif status == 'collection_ok' %}
+  <div style="background:#1a3d2b; color:#2ecc71; border:1px solid #2ecc71; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    Collection data updated successfully.
+  </div>
+  {% elif status == 'collection_err' %}
+  <div style="background:#3d1a1a; color:#e74c3c; border:1px solid #e74c3c; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    Collection refresh failed. Check server logs.
+  </div>
+  {% elif status == 'collection_err_no_file' %}
+  <div style="background:#3d1a1a; color:#e74c3c; border:1px solid #e74c3c; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    Collection file not found. Is Untapped running?
+  </div>
+  {% elif status == 'custom_collection_ok' %}
+  <div style="background:#1a3d2b; color:#2ecc71; border:1px solid #2ecc71; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    Collection loaded from {{ request.query_params.get('file', 'custom file') }}.
+  </div>
+  {% elif status == 'custom_collection_err_no_file' %}
+  <div style="background:#3d1a1a; color:#e74c3c; border:1px solid #e74c3c; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    File not found: {{ request.query_params.get('file', '') }}
+  </div>
+  {% elif status == 'custom_collection_err' %}
+  <div style="background:#3d1a1a; color:#e74c3c; border:1px solid #e74c3c; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    Failed to load collection from file. Check server logs.
+  </div>
+  {% elif status == 'log_ok' %}
+  <div style="background:#1a3d2b; color:#2ecc71; border:1px solid #2ecc71; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    Imported {{ request.query_params.get('log_count', '?') }} deck(s) from game log.
+  </div>
+  {% elif status == 'log_err_no_file' %}
+  <div style="background:#3d1a1a; color:#e74c3c; border:1px solid #e74c3c; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    Game log not found. Launch MTGA first.
+  </div>
+  {% elif status == 'log_err_no_decks' %}
+  <div style="background:#3d1a1a; color:#e74c3c; border:1px solid #e74c3c; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    No decks found in game log. Open your deck list in MTGA.
+  </div>
+  {% elif status == 'log_err' %}
+  <div style="background:#3d1a1a; color:#e74c3c; border:1px solid #e74c3c; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    Game log import failed. Check server logs.
+  </div>
+  {% elif status == 'custom_log_ok' %}
+  <div style="background:#1a3d2b; color:#2ecc71; border:1px solid #2ecc71; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    Imported {{ request.query_params.get('log_count', '?') }} deck(s) from {{ request.query_params.get('file', 'custom file') }}.
+  </div>
+  {% elif status == 'custom_log_err_no_file' %}
+  <div style="background:#3d1a1a; color:#e74c3c; border:1px solid #e74c3c; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    File not found: {{ request.query_params.get('file', '') }}
+  </div>
+  {% elif status == 'custom_log_err_no_decks' %}
+  <div style="background:#3d1a1a; color:#e74c3c; border:1px solid #e74c3c; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    No decks found in that log file.
+  </div>
+  {% elif status == 'custom_log_err' %}
+  <div style="background:#3d1a1a; color:#e74c3c; border:1px solid #e74c3c; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    Failed to import from log file. Check server logs.
+  </div>
+  {% elif status == 'default_saved_card_db' %}
+  <div style="background:#1a3d2b; color:#2ecc71; border:1px solid #2ecc71; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    Default MTGA Card Database path saved.
+  </div>
+  {% elif status == 'default_saved_collection' %}
+  <div style="background:#1a3d2b; color:#2ecc71; border:1px solid #2ecc71; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    Default Collection path saved.
+  </div>
+  {% elif status == 'default_saved_log' %}
+  <div style="background:#1a3d2b; color:#2ecc71; border:1px solid #2ecc71; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    Default Game Log path saved.
+  </div>
+  {% elif status == 'err_bad_source' %}
+  <div style="background:#3d1a1a; color:#e74c3c; border:1px solid #e74c3c; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    Unknown data source. Path not saved.
+  </div>
+  {% elif status == 'collection_defaults_saved' %}
+  <div style="background:#1a3d2b; color:#2ecc71; border:1px solid #2ecc71; border-radius:6px; padding:12px 16px; margin-bottom:24px">
+    Collection defaults saved.
+  </div>
+  {% endif %}
+
+  <section style="margin-bottom:40px; border-bottom:1px solid #333; padding-bottom:32px">
+    <h3>MTGA Card Database</h3>
+    <p style="color:#aaa">Last updated: {{ mtga_card_db_last_updated or "Never" }}</p>
+    <p style="font-size:0.8em; color:#aaa; font-family:monospace; word-break:break-all;">Path: {{ card_db_resolved }}</p>
+    <form method="post" action="/settings/set-default-path" style="display:flex; gap:8px; align-items:center; margin-top:6px; margin-bottom:10px">
+      <input type="hidden" name="source" value="card_db">
+      <input type="text" name="path" value="{{ default_card_db_path or card_db_resolved }}"
+             style="flex:1; padding:6px 10px; background:#1e1e1e; border:1px solid #444; border-radius:4px; color:#eee; font-size:0.82em; font-family:monospace">
+      <button type="submit" style="padding:6px 12px; background:#444; border:none; border-radius:4px; color:#eee; font-size:0.82em; cursor:pointer; white-space:nowrap">Change File Location</button>
+    </form>
+    <p style="color:#888; font-size:0.85em">Primary card catalog. Reads from MTGA installation. Run after MTGA updates.</p>
+    <div id="progress-mtga-card-db" style="display:none; margin-top:8px;">
+      <div style="background:#333; border-radius:4px; overflow:hidden; height:8px; margin-bottom:4px;">
+        <div id="progress-mtga-card-db-bar" style="height:100%; width:0%; background:var(--primary); transition:width 0.3s;"></div>
+      </div>
+      <div id="progress-mtga-card-db-msg" style="font-size:0.78em; color:#aaa;"></div>
+    </div>
+    <button id="btn-mtga-card-db" class="btn-primary" data-label="Reload MTGA Card Database" onclick="startReload('mtga-card-db', this)">Reload MTGA Card Database</button>
+  </section>
+
+  <section style="margin-bottom:40px; border-bottom:1px solid #333; padding-bottom:32px">
+    <h3>Scryfall Card Data</h3>
+    <p style="color:#aaa">Last updated: {{ scryfall_last_updated or "Never" }}</p>
+    <p style="font-size:0.8em; color:#aaa; font-family:monospace; word-break:break-all;">Cache: {{ scryfall_cache }}</p>
+    <p style="color:#888; font-size:0.85em">Card images and oracle text enrichment (~2 GB download). Run occasionally for new art.</p>
+    <div id="progress-scryfall" style="display:none; margin-top:8px;">
+      <div style="background:#333; border-radius:4px; overflow:hidden; height:8px; margin-bottom:4px;">
+        <div id="progress-scryfall-bar" style="height:100%; width:0%; background:var(--primary); transition:width 0.3s;"></div>
+      </div>
+      <div id="progress-scryfall-msg" style="font-size:0.78em; color:#aaa;"></div>
+    </div>
+    <button id="btn-scryfall" class="btn-primary" data-label="Reload Scryfall Data" onclick="startReload('scryfall', this)">Reload Scryfall Data</button>
+  </section>
+
+  <section style="margin-bottom:40px; border-bottom:1px solid #333; padding-bottom:32px">
+    <h3>Collection Data</h3>
+    <p style="color:#aaa">Last updated: {{ collection_last_updated or "Never" }}</p>
+    <p style="font-size:0.8em; color:#aaa; font-family:monospace; word-break:break-all;">Path: {{ collection_resolved }}</p>
+    <form method="post" action="/settings/set-default-path" style="display:flex; gap:8px; align-items:center; margin-top:6px; margin-bottom:10px">
+      <input type="hidden" name="source" value="collection">
+      <input type="text" name="path" value="{{ default_collection_path or collection_resolved }}"
+             style="flex:1; padding:6px 10px; background:#1e1e1e; border:1px solid #444; border-radius:4px; color:#eee; font-size:0.82em; font-family:monospace">
+      <button type="submit" style="padding:6px 12px; background:#444; border:none; border-radius:4px; color:#eee; font-size:0.82em; cursor:pointer; white-space:nowrap">Change File Location</button>
+    </form>
+    <p style="color:#888; font-size:0.85em">Your card quantities from Untapped.gg. Run after playing MTGA to update ownership.</p>
+    <div id="progress-collection" style="display:none; margin-top:8px;">
+      <div style="background:#333; border-radius:4px; overflow:hidden; height:8px; margin-bottom:4px;">
+        <div id="progress-collection-bar" style="height:100%; width:0%; background:var(--primary); transition:width 0.3s;"></div>
+      </div>
+      <div id="progress-collection-msg" style="font-size:0.78em; color:#aaa;"></div>
+    </div>
+    <button id="btn-collection" class="btn-primary" data-label="Reload Collection" onclick="startReload('collection', this)">Reload Collection</button>
+    <details style="margin-top:12px">
+      <summary style="cursor:pointer; color:#888; font-size:0.85em; user-select:none">Load from a different file…</summary>
+      <form method="post" action="/settings/load-collection-file" style="margin-top:10px; display:flex; gap:8px; align-items:center">
+        <input type="text" name="file_path" placeholder="/path/to/mtga_collection.db"
+               style="flex:1; padding:6px 10px; background:#1e1e1e; border:1px solid #444; border-radius:4px; color:#eee; font-size:0.85em; font-family:monospace">
+        <button type="submit" class="btn-primary" style="white-space:nowrap">Load File</button>
+      </form>
+    </details>
+  </section>
+
+  <section style="margin-bottom:40px; border-bottom:1px solid #333; padding-bottom:32px">
+    <h3>Game Log</h3>
+    <p style="color:#aaa">Last updated: {{ log_last_updated or "Never" }}</p>
+    <p style="font-size:0.8em; color:#aaa; font-family:monospace; word-break:break-all;">Path: {{ log_resolved }}</p>
+    <form method="post" action="/settings/set-default-path" style="display:flex; gap:8px; align-items:center; margin-top:6px; margin-bottom:10px">
+      <input type="hidden" name="source" value="log">
+      <input type="text" name="path" value="{{ default_log_path or log_resolved }}"
+             style="flex:1; padding:6px 10px; background:#1e1e1e; border:1px solid #444; border-radius:4px; color:#eee; font-size:0.82em; font-family:monospace">
+      <button type="submit" style="padding:6px 12px; background:#444; border:none; border-radius:4px; color:#eee; font-size:0.82em; cursor:pointer; white-space:nowrap">Change File Location</button>
+    </form>
+    <p style="color:#888; font-size:0.85em">Arena decks are imported via the Decks page sidebar.</p>
+  </section>
+
+  <section style="margin-bottom:40px; border-bottom:1px solid #333; padding-bottom:32px">
+    <h3>Collection Defaults</h3>
+    <p style="color:#888; font-size:0.85em">Default sort order and page size applied when opening the Collection view with no active filters.</p>
+    <form method="post" action="/settings/collection-defaults" style="display:flex; gap:16px; align-items:center; margin-top:12px; flex-wrap:wrap">
+      <label style="display:flex; align-items:center; gap:8px; font-size:0.88em; color:#ccc">
+        Default sort:
+        <select name="default_sort" style="padding:5px 8px; background:#1e1e1e; border:1px solid #444; border-radius:4px; color:#eee; font-size:0.88em">
+          <option value="alpha"       {{ 'selected' if collection_default_sort == 'alpha' else '' }}>Name (A→Z)</option>
+          <option value="color"       {{ 'selected' if collection_default_sort == 'color' else '' }}>Color</option>
+          <option value="color_alpha" {{ 'selected' if collection_default_sort == 'color_alpha' else '' }}>Color → Name</option>
+          <option value="color_cmc"   {{ 'selected' if collection_default_sort == 'color_cmc' else '' }}>Color → CMC</option>
+          <option value="color_owned" {{ 'selected' if collection_default_sort == 'color_owned' else '' }}>Color → Owned</option>
+          <option value="cmc"         {{ 'selected' if collection_default_sort == 'cmc' else '' }}>CMC</option>
+        </select>
+      </label>
+      <label style="display:flex; align-items:center; gap:8px; font-size:0.88em; color:#ccc">
+        Cards per page:
+        <select name="default_per_page" style="padding:5px 8px; background:#1e1e1e; border:1px solid #444; border-radius:4px; color:#eee; font-size:0.88em">
+          {% for size in [20, 50, 75, 100, 200] %}
+          <option value="{{ size }}" {{ 'selected' if collection_default_per_page == size|string else '' }}>{{ size }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit" style="padding:6px 12px; background:#444; border:none; border-radius:4px; color:#eee; font-size:0.85em; cursor:pointer">Save Defaults</button>
+    </form>
+  </section>
+
+  <section style="margin-bottom:40px; border-bottom:1px solid #333; padding-bottom:32px">
+    <h3>Draft Metrics</h3>
+    <p style="color:#888; font-size:0.85em">Set the order in which ranking metrics appear in the Draft Tracker sidebar.</p>
+    <div id="metric-order-list" style="display:flex; flex-direction:column; gap:0.4rem; margin-top:0.75rem; max-width:300px;">
+      {% for key in metric_order %}
+      {% set idx = loop.index0 %}
+      <div style="display:flex; align-items:center; gap:0.5rem;">
+        <span style="flex:1; padding:0.3rem 0.6rem; border-radius:4px; border:1px solid #444; background:#1e1e1e; color:#e2e8f0; font-size:0.85rem;">{{ METRICS[key].label }}</span>
+        {% if idx > 0 %}
+        <button type="button" onclick="moveMetric({{ idx }}, -1)" title="Move up"
+          style="padding:0.2rem 0.5rem; background:#2a2a3e; border:1px solid #444; border-radius:4px; color:#ccc; cursor:pointer; font-size:0.8rem;">&#x2191;</button>
+        {% else %}
+        <span style="display:inline-block; width:28px;"></span>
+        {% endif %}
+        {% if idx < metric_order|length - 1 %}
+        <button type="button" onclick="moveMetric({{ idx }}, 1)" title="Move down"
+          style="padding:0.2rem 0.5rem; background:#2a2a3e; border:1px solid #444; border-radius:4px; color:#ccc; cursor:pointer; font-size:0.8rem;">&#x2193;</button>
+        {% else %}
+        <span style="display:inline-block; width:28px;"></span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <script>
+    (function() {
+      var order = {{ metric_order | tojson }};
+      function moveMetric(idx, dir) {
+        var newIdx = idx + dir;
+        if (newIdx < 0 || newIdx >= order.length) return;
+        var tmp = order[idx]; order[idx] = order[newIdx]; order[newIdx] = tmp;
+        var form = document.createElement('form');
+        form.method = 'post';
+        form.action = '/settings/draft-metric-order';
+        order.forEach(function(k) {
+          var inp = document.createElement('input');
+          inp.type = 'hidden'; inp.name = 'order'; inp.value = k;
+          form.appendChild(inp);
+        });
+        document.body.appendChild(form);
+        form.submit();
+      }
+      window.moveMetric = moveMetric;
+    })();
+    </script>
+  </section>
+
+</div></div>
+
+<script>
+function startReload(source, btn) {
+  btn.disabled = true;
+  var origLabel = btn.getAttribute('data-label') || btn.textContent;
+  btn.textContent = 'Reloading\u2026';
+  var progressDiv = document.getElementById('progress-' + source);
+  var progressBar = document.getElementById('progress-' + source + '-bar');
+  var progressMsg = document.getElementById('progress-' + source + '-msg');
+  if (progressDiv) progressDiv.style.display = '';
+  if (progressBar) progressBar.style.width = '0%';
+  if (progressMsg) progressMsg.textContent = '';
+
+  fetch('/settings/refresh-' + source, {method: 'POST'})
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var token = data.token;
+      var es = new EventSource('/settings/reload-stream/' + source + '?token=' + token);
+      es.addEventListener('progress', function(e) {
+        var evt = JSON.parse(e.data);
+        if (progressBar) progressBar.style.width = (evt.pct || 0) + '%';
+        if (progressMsg) progressMsg.textContent = evt.message || evt.stage || '';
+        if (evt.stage === 'done') {
+          es.close();
+          btn.disabled = false;
+          btn.textContent = origLabel;
+          var ok = evt.status && evt.status.endsWith('_ok');
+          if (progressMsg) progressMsg.textContent = ok ? 'Complete!' : ('Failed: ' + (evt.message || evt.status || 'unknown error'));
+          setTimeout(function() { if (progressDiv) progressDiv.style.display = 'none'; }, 3000);
+        }
+      });
+      es.onerror = function() {
+        es.close();
+        btn.disabled = false;
+        btn.textContent = origLabel;
+        if (progressMsg) progressMsg.textContent = 'Connection error \u2014 try again';
+      };
+    })
+    .catch(function() {
+      btn.disabled = false;
+      btn.textContent = origLabel;
+      if (progressMsg) progressMsg.textContent = 'Request failed \u2014 try again';
+    });
+}
+</script>
+{% endblock %}

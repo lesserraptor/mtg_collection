@@ -1,0 +1,85 @@
+{% if phase == "IDLE" or phase == "DRAFT_COMPLETE" %}
+<p class="draft-idle">Waiting for draft to start...<br><small style="font-size:0.85em;color:#777;">Open MTGA and start a Premier, Traditional, or Quick Draft.</small></p>
+{% elif phase == "DRAFT_STARTED" %}
+<p class="draft-idle">Draft started: {{ set_code }} &mdash; loading ratings...</p>
+{% else %}
+<div class="draft-pack-header" style="grid-column:1/-1">
+  Pack {{ pack_num }} &middot; Pick {{ pick_num }} &middot; {{ set_code }} {{ format }}
+</div>
+{% if not ratings_available %}
+<div style="grid-column:1/-1; color:#888; text-align:center; padding:0.75rem 1rem; font-size:0.85rem; border:1px solid #333; border-radius:4px; margin-bottom:0.5rem;">
+  No 17lands data for {{ format }} &middot; {{ set_code }}
+</div>
+{% endif %}
+{% for card in cards %}
+  {% set metric_val = metric_values.get(card.arena_id|string) %}
+  {% set pick_rank = top_picks.index(card.arena_id) + 1 if card.arena_id in top_picks else 0 %}
+  {% set is_taken = (card.arena_id in taken_set) %}
+  <div class="card-tile{% if pick_rank == 1 %} best-pick{% elif pick_rank == 2 %} second-pick{% elif pick_rank == 3 %} third-pick{% endif %}{% if is_taken %} taken{% endif %}"
+       hx-get="/cards/{{ card.arena_id }}/detail"
+       hx-target="#detail-panel-body"
+       hx-swap="innerHTML">
+    <div class="card-img-wrap">
+      <img src="/images/{{ card.arena_id }}"
+           alt="{{ card.name }}"
+           loading="lazy"
+           onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'" />
+      <div class="card-img-fallback">{{ card.name }}</div>
+      <div class="qty-badge {% if card.owned_quantity == 0 %}zero{% endif %}">
+        {{ card.owned_quantity }}
+      </div>
+      {% if card.deck_demand > 0 %}
+      <div class="demand-badge" title="{{ card.deck_demand }} deck(s) want this card">
+        {{ card.deck_demand }}
+      </div>
+      {% endif %}
+      {% if card.is_rebalanced %}
+      <div class="alchemy-badge" title="Alchemy rebalanced card">A</div>
+      {% endif %}
+      {% if card.image_uri_back %}
+      <button class="flip-btn"
+              title="Flip card"
+              data-face="front"
+              data-arena-id="{{ card.arena_id }}"
+              onclick="(function(btn){
+                var img = btn.closest('.card-img-wrap').querySelector('img');
+                var id = btn.dataset.arenaId;
+                if (btn.dataset.face === 'front') {
+                  img.src = '/images/' + id + '/back';
+                  btn.dataset.face = 'back';
+                  btn.title = 'Flip to front';
+                } else {
+                  img.src = '/images/' + id;
+                  btn.dataset.face = 'front';
+                  btn.title = 'Flip card';
+                }
+                event.stopPropagation();
+              })(this)">&#x21BA;</button>
+      {% endif %}
+      {% if pick_rank %}
+      <div class="draft-rank rank-{{ pick_rank }}">{{ pick_rank }}</div>
+      {% endif %}
+      <div class="draft-gihwr{% if pick_rank == 1 %} best{% elif pick_rank == 2 %} second{% elif pick_rank == 3 %} third{% endif %}">
+        {% if metric_val is not none %}
+          {% if metric_pct %}{{ "%.1f"|format(metric_val * 100) }}%{% else %}{{ "%.1f"|format(metric_val) }}{% endif %}
+        {% else %}—{% endif %}
+      </div>
+    </div>
+    <div class="rarity-stripe rarity-{{ card.rarity[0]|upper if card.rarity else 'C' }}"></div>
+    <div class="card-meta">
+      <div class="card-name" title="{{ card.name }}">{{ card.name }}</div>
+      <div class="card-cost">{{ mana_symbols_html(card.mana_cost) }}</div>
+      <div class="card-type">{{ card.type_line or '' }}</div>
+      <div class="card-footer">
+        <span class="rarity-label rarity-label-{{ card.rarity[0]|upper if card.rarity else 'C' }}">{{ card.rarity | capitalize if card.rarity else '' }}</span>
+        <span class="owned-line
+          {%- if card.owned_quantity >= 4 %} full
+          {%- elif card.owned_quantity == 0 %} missing
+          {%- endif %}">
+          {{ card.owned_quantity }} of 4
+        </span>
+      </div>
+    </div>
+  </div>
+{% endfor %}
+{% endif %}

@@ -1,0 +1,26 @@
+<div id="draft-color-filter" style="display:flex; gap:0.4rem; align-items:center; padding: 0.75rem 1.5rem 0;">
+  <span style="font-size:0.75rem; color:#888; margin-right:0.25rem;">Color focus:</span>
+  {% for color, cls in [('W','w'),('U','u'),('B','b'),('R','r'),('G','g')] %}
+  <button
+    hx-post="/draft/colors/toggle"
+    hx-vals='{"color": "{{ color }}"}'
+    hx-target="#draft-color-filter"
+    hx-swap="outerHTML"
+    style="
+      width:28px; height:28px; border-radius:50%; border:2px solid {% if color in color_filter %}#fff{% else %}transparent{% endif %};
+      background:transparent; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;
+      opacity:{% if color in color_filter %}1{% else %}0.45{% endif %};
+    ">
+    <i class="ms ms-{{ cls }} ms-cost" style="font-size:1.1rem;"></i>
+  </button>
+  {% endfor %}
+  {% if color_filter %}
+  <button
+    hx-post="/draft/colors/clear"
+    hx-target="#draft-color-filter"
+    hx-swap="outerHTML"
+    style="font-size:0.7rem; color:#888; background:none; border:none; cursor:pointer; padding:0 0.25rem;">
+    clear
+  </button>
+  {% endif %}
+</div>

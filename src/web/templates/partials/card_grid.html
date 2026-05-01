@@ -1,0 +1,21 @@
+<div id="card-grid">
+  <div class="main-header">
+    {% include "partials/pagination.html" %}
+  </div>
+
+  <div class="card-scroll-area">
+    {% if cards %}
+      <div class="card-grid">
+        {% for card in cards %}
+          {% include "partials/card_item.html" %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <p>No cards found</p>
+        <p style="font-size:12px">Try adjusting your filters</p>
+      </div>
+    {% endif %}
+  </div>
+</div>

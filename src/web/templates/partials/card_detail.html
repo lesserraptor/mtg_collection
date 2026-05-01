@@ -1,0 +1,125 @@
+{% set rarity_initial = card.rarity[0]|upper if card.rarity else 'C' %}
+
+<div class="detail-img-wrap">
+  <img id="detail-card-img-{{ card.arena_id }}"
+       src="/images/{{ card.arena_id }}"
+       alt="{{ card.name }}"
+       onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'" />
+  <div class="detail-img-fallback">{{ card.name }}</div>
+  {% if card.image_uri_back %}
+  <button class="flip-btn"
+          title="Flip card"
+          data-face="front"
+          data-arena-id="{{ card.arena_id }}"
+          onclick="(function(btn){
+            var img = document.getElementById('detail-card-img-' + btn.dataset.arenaId);
+            var id = btn.dataset.arenaId;
+            if (btn.dataset.face === 'front') {
+              img.src = '/images/' + id + '/back';
+              btn.dataset.face = 'back';
+              btn.title = 'Flip to front';
+            } else {
+              img.src = '/images/' + id;
+              btn.dataset.face = 'front';
+              btn.title = 'Flip card';
+            }
+          })(this)">&#x21BA;</button>
+  {% endif %}
+</div>
+
+<div class="detail-body">
+  <div class="detail-name-row">
+    <span class="detail-name">{{ card.name }}</span>
+    <span class="detail-mana">
+      {{ mana_symbols_html(card.mana_cost) }}
+    </span>
+  </div>
+
+  <div class="detail-type">{{ card.type_line or '' }}</div>
+
+  <div class="detail-meta-row">
+    <span class="rarity-label rarity-label-{{ rarity_initial }}">{{ card.rarity | capitalize }}</span>
+    <span class="detail-set" id="detail-set-label">{{ card.set_code | upper }} #{{ card.collector_number }}</span>
+    {% if card.cmc is not none %}<span class="detail-cmc">CMC {{ card.cmc | int }}</span>{% endif %}
+  </div>
+
+  {% if card.oracle_text %}
+  <div class="detail-oracle">{{ oracle_to_html(card.oracle_text) }}</div>
+  {% endif %}
+
+  <div class="detail-owned-row">
+    <span class="detail-owned-label">In collection</span>
+    <span class="detail-owned-count
+      {%- set qty = card.total_owned if card.total_owned is defined else card.owned_quantity %}
+      {%- if qty >= 4 %} full
+      {%- elif qty == 0 %} missing
+      {%- endif %}">
+      {{ qty }} / 4
+    </span>
+  </div>
+
+  <div style="margin-top:10px;">
+    <button onclick="(function(btn){
+        btn.disabled = true; btn.textContent = 'Clearing…';
+        fetch('/images/{{ card.arena_id }}/cache', {method:'DELETE'})
+          .then(function(){
+            var img = document.getElementById('detail-card-img-{{ card.arena_id }}');
+            if (img) { var src = img.src; img.src = ''; img.src = src + '?t=' + Date.now(); }
+            btn.textContent = 'Cleared!';
+            setTimeout(function(){ btn.textContent = 'Refresh image'; btn.disabled = false; }, 2000);
+          });
+      })(this)"
+      style="font-size:11px; color:var(--text-muted); background:none; border:none; padding:0; cursor:pointer; text-decoration:underline;">
+      Refresh image
+    </button>
+  </div>
+</div>
+
+{% if card_decks %}
+<div class="detail-decks">
+  <span class="detail-decks-label">Potential Decks Needing this:</span>
+  {% for deck in card_decks %}
+  <a href="/decks/{{ deck.id }}" class="detail-deck-link">[{{ loop.index }}]</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<style>
+.detail-decks { padding: 6px 12px; font-size: 0.8rem; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.detail-decks-label { margin-right: 4px; }
+.detail-deck-link { color: var(--primary); text-decoration: none; font-weight: 600; }
+.detail-deck-link:hover { text-decoration: underline; }
+</style>
+
+{% if printings and printings|length > 1 %}
+<div class="printings-strip">
+  <div class="printings-label">{{ printings|length }} owned versions</div>
+  <div class="printings-thumbs">
+    {% for p in printings %}
+    <div class="printing-thumb {% if p.arena_id == card.arena_id %}active{% endif %}"
+         title="{% if p.is_rebalanced %}Alchemy rebalanced · {% endif %}{{ p.set_code|upper }}{% if p.collector_number %} #{{ p.collector_number }}{% endif %}{% if p.owned_quantity %} · owned: {{ p.owned_quantity }}{% endif %}"
+         {% if p.image_uri_front %}
+         onclick="document.getElementById('detail-card-img-{{ card.arena_id }}').src='/images/{{ p.arena_id }}'; document.getElementById('detail-set-label').textContent='{{ p.set_code|upper }} #{{ p.collector_number }}'; document.querySelectorAll('.printing-thumb').forEach(function(t){t.classList.remove('active')}); this.classList.add('active')"
+         {% endif %}>
+      {% if p.image_uri_front %}
+      <img src="/images/{{ p.arena_id }}" loading="lazy" alt="{{ p.set_code }}" />
+      {% else %}
+      <div class="printing-no-img">A</div>
+      {% endif %}
+      {% if p.owned_quantity %}<div class="printing-owned">{{ p.owned_quantity }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+<style>
+  .printings-strip { padding: 8px 12px 4px; border-top: 1px solid #dee2e6; }
+  .printings-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(51,51,51,0.45); margin-bottom: 6px; }
+  .printings-thumbs { display: flex; flex-wrap: wrap; gap: 4px; }
+  .printing-thumb { position: relative; width: 38px; cursor: pointer; border-radius: 3px; overflow: hidden; border: 2px solid transparent; flex-shrink: 0; }
+  .printing-thumb img { width: 100%; display: block; }
+  .printing-thumb.active { border-color: #731fa1; }
+  .printing-thumb:hover { border-color: rgba(115,31,161,0.5); }
+  .printing-owned { position: absolute; bottom: 1px; right: 2px; font-size: 9px; font-weight: 700; color: #fff; text-shadow: 0 0 2px #000; }
+  .printing-no-img { width: 100%; aspect-ratio: 5/7; background: #1a1a2e; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #a855f7; border-radius: 2px; }
+</style>
+{% endif %}

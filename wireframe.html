@@ -1,0 +1,1497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MTG Collection — Deck Management Wireframe</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #eef0f2;
+      --bg-card: #ffffff;
+      --bg-secondary: #e9ecef;
+      --text: #333;
+      --text-muted: rgba(51,51,51,0.6);
+      --border: #dee2e6;
+      --primary: #731fa1;
+      --primary-hover: #5c1981;
+      --primary-light: rgba(115,31,161,0.12);
+      --sidebar-width: 260px;
+      --navbar-height: 52px;
+      --owned-full: #198754;
+      --missing: #dc3545;
+      --saved: #0d6efd;
+      --saved-light: rgba(13,110,253,0.1);
+    }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 14px;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    /* ── NAVBAR ── */
+    .navbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: var(--navbar-height);
+      background: #fff;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 1.5rem;
+      gap: 2rem;
+      z-index: 100;
+    }
+    .navbar-brand {
+      font-weight: 800;
+      font-size: 1.1rem;
+      color: var(--primary);
+      text-decoration: none;
+      letter-spacing: -0.3px;
+      white-space: nowrap;
+    }
+    .nav-tabs { display: flex; gap: 0; height: 100%; }
+    .nav-tab {
+      padding: 0 1rem;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-decoration: none;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+      white-space: nowrap;
+      cursor: pointer;
+      user-select: none;
+    }
+    .nav-tab:hover { color: var(--text); }
+    .nav-tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+
+    /* ── LAYOUT ── */
+    .layout { display: flex; padding-top: var(--navbar-height); min-height: 100vh; }
+
+    /* ── SIDEBAR ── */
+    .sidebar {
+      position: fixed;
+      top: var(--navbar-height);
+      left: 0; bottom: 0;
+      width: var(--sidebar-width);
+      background: #fff;
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    /* ── MAIN ── */
+    .main {
+      margin-left: var(--sidebar-width);
+      flex: 1;
+      padding: 1.5rem;
+      overflow-y: auto;
+      height: calc(100vh - var(--navbar-height));
+    }
+
+    /* ── BUTTONS ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.45rem 1rem;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: background 0.15s, color 0.15s;
+      text-decoration: none;
+      gap: 6px;
+    }
+    .btn-primary-full {
+      background: var(--primary);
+      color: #fff;
+      width: 100%;
+    }
+    .btn-primary-full:hover { background: var(--primary-hover); }
+    .btn-outline-primary {
+      background: transparent;
+      color: var(--primary);
+      border: 1px solid var(--primary);
+      width: 100%;
+    }
+    .btn-outline-primary:hover { background: var(--primary-light); }
+    .btn-outline-danger {
+      background: transparent;
+      color: var(--missing);
+      border: 1px solid var(--missing);
+      width: 100%;
+    }
+    .btn-outline-danger:hover { background: rgba(220,53,69,0.08); }
+    /* Inline action buttons (on table rows) */
+    .btn-inline {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.3rem 0.65rem;
+      border-radius: 5px;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+    .btn-inline-move {
+      background: var(--saved-light);
+      color: var(--saved);
+      border: 1px solid rgba(13,110,253,0.3);
+    }
+    .btn-inline-move:hover { background: rgba(13,110,253,0.18); }
+    .btn-inline-save {
+      background: var(--saved-light);
+      color: var(--saved);
+      border: 1px solid rgba(13,110,253,0.3);
+    }
+    .btn-inline-save:hover { background: rgba(13,110,253,0.18); }
+    .btn-inline-unsave {
+      background: rgba(220,53,69,0.08);
+      color: var(--missing);
+      border: 1px solid rgba(220,53,69,0.25);
+    }
+    .btn-inline-unsave:hover { background: rgba(220,53,69,0.15); }
+    /* Sidebar action buttons (full-width outline variants for blue/unsave) */
+    .btn-outline-saved {
+      background: transparent;
+      color: var(--saved);
+      border: 1px solid var(--saved);
+      width: 100%;
+    }
+    .btn-outline-saved:hover { background: var(--saved-light); }
+
+    /* ── SIDEBAR COMPONENTS ── */
+    .sidebar-section { display: flex; flex-direction: column; gap: 0.5rem; }
+    .sidebar-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+    .sidebar-divider { border: none; border-top: 1px solid var(--border); }
+    .sidebar-back-link {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--primary);
+      text-decoration: none;
+      cursor: pointer;
+      font-weight: 500;
+      background: none;
+      border: none;
+      font-family: inherit;
+      padding: 0;
+    }
+    .sidebar-back-link:hover { text-decoration: underline; }
+    .sidebar-deck-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.4;
+    }
+    .sidebar-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    /* ── IMPORT FORM ── */
+    .import-form { display: flex; flex-direction: column; gap: 0.6rem; }
+    .form-input {
+      width: 100%;
+      padding: 0.4rem 0.6rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 13px;
+      outline: none;
+      background: #fff;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      resize: vertical;
+    }
+    .form-input:focus {
+      border-color: #b98fd0;
+      box-shadow: 0 0 0 3px rgba(115,31,161,0.15);
+    }
+    .form-input::placeholder { color: #aaa; }
+    .form-checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    .form-checkbox-row input[type=checkbox] { cursor: pointer; accent-color: var(--primary); }
+
+    /* ── DECK LIST TABS ── */
+    .deck-tabs {
+      display: flex;
+      border-bottom: 2px solid var(--border);
+      margin-bottom: 1.25rem;
+    }
+    .deck-tab {
+      padding: 0.5rem 1.25rem;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: color 0.15s, border-color 0.15s;
+      user-select: none;
+    }
+    .deck-tab.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+      font-weight: 600;
+    }
+    .deck-tab:hover { color: var(--text); }
+
+    /* ── DECK TABLE ── */
+    .deck-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .deck-table thead th {
+      padding: 0.65rem 1rem;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+    }
+    .deck-table tbody td {
+      padding: 0.7rem 1rem;
+      font-size: 13px;
+      color: var(--text);
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    .deck-table tbody tr:last-child td { border-bottom: none; }
+    .deck-table tbody tr {
+      transition: background 0.1s;
+    }
+    .deck-table tbody tr:hover { background: #f8f4fc; }
+    .deck-name-link {
+      font-weight: 600;
+      color: var(--primary);
+      cursor: pointer;
+    }
+    /* Actions column cells — no pointer on the row itself */
+    .td-actions { white-space: nowrap; }
+
+    /* Progress bar */
+    .progress-wrap { display: flex; align-items: center; gap: 8px; }
+    .progress-bar-bg {
+      width: 80px;
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .progress-bar-fill { height: 100%; border-radius: 3px; background: var(--owned-full); }
+    .progress-bar-fill.partial { background: var(--primary); }
+    .progress-bar-fill.low { background: var(--missing); }
+    .progress-text { font-size: 12px; font-weight: 600; white-space: nowrap; color: var(--text-muted); }
+    .progress-text.full { color: var(--owned-full); }
+    .progress-text.partial { color: var(--primary); }
+    .progress-text.low { color: var(--missing); }
+
+    /* ── SOURCE BADGE (Saved tab) ── */
+    .source-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .source-badge.arena {
+      background: rgba(25,135,84,0.1);
+      color: var(--owned-full);
+    }
+    .source-badge.potential {
+      background: var(--primary-light);
+      color: var(--primary);
+    }
+
+    /* ── DECK DETAIL (Moxfield layout) ── */
+
+    /* Top action bar — full-width strip inside main content */
+    .detail-action-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 1rem;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      margin: -1.5rem -1.5rem 0 -1.5rem; /* bleed to main edges */
+    }
+    .detail-action-bar .btn-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 0.4rem 0.9rem;
+      border-radius: 5px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .detail-action-bar .btn-action:hover { background: var(--bg-secondary); border-color: #bbb; }
+    .detail-action-bar .btn-action.danger { color: var(--missing); border-color: rgba(220,53,69,0.35); }
+    .detail-action-bar .btn-action.danger:hover { background: rgba(220,53,69,0.07); }
+    .detail-action-bar .btn-action.saved { color: var(--saved); border-color: rgba(13,110,253,0.35); }
+    .detail-action-bar .btn-action.saved:hover { background: var(--saved-light); }
+
+    /* Deck name + meta block below action bar */
+    .detail-deck-header {
+      padding: 1rem 1rem 0.75rem;
+      margin: 0 -1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: #fff;
+      display: flex;
+      align-items: baseline;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .detail-deck-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--text);
+      letter-spacing: -0.3px;
+    }
+    .detail-deck-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    /* Two-pane body: card image left + card list right */
+    .detail-body {
+      display: flex;
+      gap: 1.25rem;
+      padding-top: 1.25rem;
+      align-items: flex-start;
+    }
+    .detail-card-image {
+      flex-shrink: 0;
+      width: 340px;
+    }
+    .detail-card-image img,
+    .detail-card-image .card-img-placeholder {
+      width: 340px;
+      aspect-ratio: 5 / 7;
+      border-radius: 10px;
+      display: block;
+      object-fit: cover;
+    }
+    .card-img-placeholder {
+      background: linear-gradient(145deg, #ddd 0%, #bbb 100%);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    /* Two-column card list grid */
+    .detail-card-list {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      align-items: start;
+      min-width: 0;
+    }
+
+    /* Each type group block */
+    .type-group {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      overflow: hidden;
+    }
+    .type-group-header {
+      padding: 0.45rem 0.75rem;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+    .card-row {
+      display: flex;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      background: #fff;
+      cursor: default;
+      transition: background 0.1s;
+    }
+    .card-row:last-child { border-bottom: none; }
+    .card-row:hover { background: #f8f4fc; }
+    .card-row.card-missing { opacity: 0.55; }
+    .card-row-qty {
+      width: 26px;
+      flex-shrink: 0;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+      padding: 0.45rem 0.25rem;
+    }
+    .card-row-name {
+      flex: 1;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text);
+      padding: 0.45rem 0.35rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .card-row-mana {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 0.45rem 0.35rem;
+    }
+    /* Tiny mana pip placeholder (real impl uses mana font) */
+    .mana-pip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      font-size: 8px;
+      font-weight: 700;
+      border: 1px solid rgba(0,0,0,0.15);
+    }
+    .pip-w { background: #f9f1d9; color: #7a6d40; }
+    .pip-u { background: #b3d4f7; color: #1a4a7a; }
+    .pip-b { background: #a89bbd; color: #2a1a3a; }
+    .pip-r { background: #f5a87a; color: #7a2a0a; }
+    .pip-g { background: #8ecfa0; color: #1a4a28; }
+    .pip-c { background: #d4d4d4; color: #444; }
+    .pip-2 { background: #e0e0e0; color: #555; }
+    .card-row-action {
+      flex-shrink: 0;
+      padding: 0.45rem 0.5rem;
+      font-size: 14px;
+      color: #bbb;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .card-row-action:hover { color: var(--primary); }
+    /* owned indicator for potential/saved decks */
+    .card-row-owned {
+      flex-shrink: 0;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 0 0.4rem 0 0;
+      white-space: nowrap;
+    }
+    .card-row-owned.full { color: var(--owned-full); }
+    .card-row-owned.partial { color: var(--primary); }
+    .card-row-owned.missing { color: var(--missing); }
+
+    .owned-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      padding: 0 6px;
+      height: 20px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .owned-badge.full { background: rgba(25,135,84,0.12); color: var(--owned-full); }
+    .owned-badge.partial { background: rgba(115,31,161,0.12); color: var(--primary); }
+    .owned-badge.none { background: rgba(220,53,69,0.1); color: var(--missing); }
+    .missing-indicator { font-size: 11px; font-weight: 600; color: var(--missing); white-space: nowrap; }
+    .owned-muted { font-size: 11px; color: var(--text-muted); }
+
+    /* ── SCREEN TOGGLE ── */
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    /* ── FORMAT BADGE ── */
+    .format-badge {
+      display: inline-block;
+      background: var(--primary-light);
+      color: var(--primary);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    /* ── INLINE DECK NAME EDIT ── */
+    .detail-deck-header {
+      /* override to allow Save button to align to baseline */
+      align-items: center;
+    }
+    .deck-name-input {
+      /* Looks like an h1 — no visible form chrome */
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--text);
+      letter-spacing: -0.3px;
+      font-family: inherit;
+      border: none;
+      background: transparent;
+      outline: none;
+      padding: 0;
+      margin: 0;
+      /* subtle focus ring so it's tabbable without looking like a field */
+      border-radius: 3px;
+      /* shrink to fit content but don't overflow header */
+      min-width: 4ch;
+      max-width: 100%;
+    }
+    .deck-name-input:focus {
+      box-shadow: 0 2px 0 0 var(--primary);
+    }
+    .deck-name-save {
+      display: none; /* hidden until value changes */
+      padding: 0.28rem 0.7rem;
+      border-radius: 5px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      background: var(--primary);
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .deck-name-save:hover { background: var(--primary-hover); }
+    .deck-name-save.visible { display: inline-flex; }
+
+    /* ── DB MODEL NOTE ── */
+    .db-note {
+      background: #fff8e1;
+      border: 1px solid #ffe082;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-size: 12px;
+      color: #5d4037;
+      margin-bottom: 1.25rem;
+      line-height: 1.6;
+    }
+    .db-note strong { color: #3e2723; }
+  </style>
+</head>
+<body>
+
+  <!-- ── NAVBAR ── -->
+  <nav class="navbar">
+    <span class="navbar-brand">MTG Collection</span>
+    <div class="nav-tabs">
+      <span class="nav-tab" onclick="showScreen('list')">Collection</span>
+      <span class="nav-tab active" id="nav-decks" onclick="showScreen('list')">Decks</span>
+      <span class="nav-tab">Analysis</span>
+      <span class="nav-tab">Settings</span>
+    </div>
+  </nav>
+
+
+  <!-- ═══════════════════════════════════════════════
+       SCREEN 1: DECK LIST (My Decks / Potential / Saved tabs)
+  ═══════════════════════════════════════════════ -->
+  <div id="screen-list" class="screen active">
+    <div class="layout">
+      <aside class="sidebar">
+
+        <div class="sidebar-section">
+          <span class="sidebar-label">Import Arena Decklist</span>
+          <div class="import-form">
+            <textarea
+              class="form-input"
+              rows="8"
+              placeholder="Paste Arena decklist...&#10;&#10;Deck&#10;4 Lightning Bolt (FCA) 55&#10;2 Island (BRO) 268&#10;&#10;Sideboard&#10;2 Pyroblast"
+            ></textarea>
+            <input
+              type="text"
+              class="form-input"
+              placeholder="Deck name (leave blank to use name from list)"
+            />
+            <label class="form-checkbox-row">
+              <input type="checkbox" />
+              Potential Deck
+            </label>
+            <button class="btn btn-primary-full">Import</button>
+          </div>
+        </div>
+
+      </aside>
+
+      <main class="main">
+
+        <!-- DB model annotation -->
+        <div class="db-note">
+          <strong>DB model:</strong> <code>is_potential BOOLEAN</code> + <code>is_saved BOOLEAN</code> — constraint: both cannot be true simultaneously. Arena decks have <code>is_potential = false</code>; saved Arena decks have <code>is_saved = true</code>. Potential decks moved to Saved set <code>is_potential = false, is_saved = true</code>.
+        </div>
+
+        <div class="deck-tabs">
+          <div class="deck-tab active" id="tab-mydecks" onclick="switchDeckTab('mydecks')">Arena Decks</div>
+          <div class="deck-tab" id="tab-potential" onclick="switchDeckTab('potential')">Potential Decks</div>
+          <div class="deck-tab" id="tab-saved" onclick="switchDeckTab('saved')">Saved Decks</div>
+        </div>
+
+        <!-- Arena Decks panel -->
+        <div id="panel-mydecks">
+          <table class="deck-table">
+            <thead>
+              <tr>
+                <th>Deck Name</th>
+                <th>Cards</th>
+                <th>Imported</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="deck-name-link" onclick="showScreen('detail-arena')">Mono-Red Aggro</span></td>
+                <td>60</td>
+                <td><span class="owned-muted">2026-03-28</span></td>
+                <td class="td-actions">
+                  <button class="btn-inline btn-inline-save">Save for Later</button>
+                </td>
+              </tr>
+              <tr>
+                <td><span class="deck-name-link" onclick="showScreen('detail-arena')">Azorius Control</span></td>
+                <td>75</td>
+                <td><span class="owned-muted">2026-03-25</span></td>
+                <td class="td-actions">
+                  <button class="btn-inline btn-inline-save">Save for Later</button>
+                </td>
+              </tr>
+              <tr>
+                <td><span class="deck-name-link" onclick="showScreen('detail-arena')">Golgari Midrange</span></td>
+                <td>60</td>
+                <td><span class="owned-muted">2026-03-20</span></td>
+                <td class="td-actions">
+                  <button class="btn-inline btn-inline-save">Save for Later</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Potential Decks panel -->
+        <div id="panel-potential" style="display:none;">
+          <table class="deck-table">
+            <thead>
+              <tr>
+                <th>Deck Name</th>
+                <th>Cards</th>
+                <th>Owned</th>
+                <th>Imported</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="deck-name-link" onclick="showScreen('detail-potential')">Izzet Phoenix</span></td>
+                <td>60</td>
+                <td>
+                  <div class="progress-wrap">
+                    <div class="progress-bar-bg"><div class="progress-bar-fill low" style="width:57%"></div></div>
+                    <span class="progress-text low">34 / 60</span>
+                  </div>
+                </td>
+                <td><span class="owned-muted">2026-03-27</span></td>
+                <td class="td-actions" style="display:flex; gap:6px; align-items:center;">
+                  <button class="btn-inline btn-inline-move">Move to Saved</button>
+                  <button class="btn-inline btn-inline-unsave">Delete</button>
+                </td>
+              </tr>
+              <tr>
+                <td><span class="deck-name-link" onclick="showScreen('detail-potential')">Domain Ramp</span></td>
+                <td>60</td>
+                <td>
+                  <div class="progress-wrap">
+                    <div class="progress-bar-bg"><div class="progress-bar-fill low" style="width:42%"></div></div>
+                    <span class="progress-text low">25 / 60</span>
+                  </div>
+                </td>
+                <td><span class="owned-muted">2026-03-22</span></td>
+                <td class="td-actions" style="display:flex; gap:6px; align-items:center;">
+                  <button class="btn-inline btn-inline-move">Move to Saved</button>
+                  <button class="btn-inline btn-inline-unsave">Delete</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Saved Decks panel -->
+        <div id="panel-saved" style="display:none;">
+          <table class="deck-table">
+            <thead>
+              <tr>
+                <th>Deck Name</th>
+                <th>Source</th>
+                <th>Cards</th>
+                <th>Owned</th>
+                <th>Saved</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Arena deck flagged for later — still in Arena Decks too -->
+              <tr>
+                <td><span class="deck-name-link" onclick="showScreen('detail-saved-arena')">Azorius Control</span></td>
+                <td><span class="source-badge arena">Arena Deck</span></td>
+                <td>75</td>
+                <td>
+                  <div class="progress-wrap">
+                    <div class="progress-bar-bg"><div class="progress-bar-fill partial" style="width:77%"></div></div>
+                    <span class="progress-text partial">58 / 75</span>
+                  </div>
+                </td>
+                <td><span class="owned-muted">2026-03-29</span></td>
+                <td class="td-actions" style="display:flex; gap:6px; align-items:center;">
+                  <button class="btn-inline btn-inline-unsave">Unsave</button>
+                  <button class="btn-inline btn-inline-unsave">Delete</button>
+                </td>
+              </tr>
+              <!-- Former-potential moved to Saved -->
+              <tr>
+                <td><span class="deck-name-link" onclick="showScreen('detail-saved-potential')">Izzet Phoenix</span></td>
+                <td><span class="source-badge potential">Former Potential</span></td>
+                <td>60</td>
+                <td>
+                  <div class="progress-wrap">
+                    <div class="progress-bar-bg"><div class="progress-bar-fill low" style="width:57%"></div></div>
+                    <span class="progress-text low">34 / 60</span>
+                  </div>
+                </td>
+                <td><span class="owned-muted">2026-03-28</span></td>
+                <td class="td-actions" style="display:flex; gap:6px; align-items:center;">
+                  <button class="btn-inline btn-inline-unsave">Unsave</button>
+                  <button class="btn-inline btn-inline-unsave">Delete</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </main>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════
+       SCREEN 2a: DECK DETAIL — Arena Deck (Moxfield layout)
+       Action bar: Export only. No owned info on cards.
+  ═══════════════════════════════════════════════ -->
+  <div id="screen-detail-arena" class="screen">
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="sidebar-section">
+          <button class="sidebar-back-link" onclick="showScreen('list')">← Deck List</button>
+        </div>
+        <hr class="sidebar-divider" />
+        <div class="sidebar-section">
+          <span class="sidebar-deck-name" id="sidebar-deck-name-arena">Azorius Control</span>
+          <div class="sidebar-meta">
+            <span>Imported 2026-03-25</span>
+            <span><span class="format-badge">Standard</span></span>
+            <span style="color:var(--text-muted);">Arena Deck</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <!-- Action bar -->
+        <div class="detail-action-bar">
+          <button class="btn-action">Export (Arena text)</button>
+          <button class="btn-action saved">Save for Later</button>
+        </div>
+
+        <!-- Deck name header — name is directly editable -->
+        <div class="detail-deck-header">
+          <input
+            type="text"
+            class="deck-name-input"
+            id="detail-deck-title-arena"
+            value="Azorius Control"
+            oninput="onDeckNameInput('arena')"
+          />
+          <button
+            class="deck-name-save"
+            id="deck-name-save-arena"
+            onclick="saveDeckName('arena', 'sidebar-deck-name-arena')"
+          >Save</button>
+          <div class="detail-deck-meta">
+            <span class="format-badge">Standard</span>
+            <span>75 cards</span>
+            <span>Imported 2026-03-25</span>
+          </div>
+        </div>
+
+        <!-- Moxfield body: card image + two-column type groups -->
+        <div class="detail-body">
+          <!-- Card image (updates on hover) -->
+          <div class="detail-card-image">
+            <div class="card-img-placeholder">card image</div>
+          </div>
+
+          <!-- Two-column card list -->
+          <div class="detail-card-list">
+
+            <!-- Creatures (col 1) -->
+            <div class="type-group">
+              <div class="type-group-header">Creatures (8)</div>
+              <div class="card-row">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Teferi, Hero of Dominaria</div>
+                <div class="card-row-mana"><span class="mana-pip pip-2">3</span><span class="mana-pip pip-w">W</span><span class="mana-pip pip-u">U</span></div>
+                <div class="card-row-action">+</div>
+              </div>
+              <div class="card-row">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Narset, Parter of Veils</div>
+                <div class="card-row-mana"><span class="mana-pip pip-2">2</span><span class="mana-pip pip-u">U</span></div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+            <!-- Instants (col 2) -->
+            <div class="type-group">
+              <div class="type-group-header">Instants (8)</div>
+              <div class="card-row">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Absorb</div>
+                <div class="card-row-mana"><span class="mana-pip pip-u">U</span><span class="mana-pip pip-w">W</span><span class="mana-pip pip-u">U</span></div>
+                <div class="card-row-action">+</div>
+              </div>
+              <div class="card-row">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Counterspell</div>
+                <div class="card-row-mana"><span class="mana-pip pip-u">U</span><span class="mana-pip pip-u">U</span></div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+            <!-- Sorceries (col 1) -->
+            <div class="type-group">
+              <div class="type-group-header">Sorceries (4)</div>
+              <div class="card-row">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Supreme Verdict</div>
+                <div class="card-row-mana"><span class="mana-pip pip-2">1</span><span class="mana-pip pip-w">W</span><span class="mana-pip pip-w">W</span><span class="mana-pip pip-u">U</span></div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+            <!-- Lands (col 2) -->
+            <div class="type-group">
+              <div class="type-group-header">Lands (24)</div>
+              <div class="card-row">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Hallowed Fountain</div>
+                <div class="card-row-mana"></div>
+                <div class="card-row-action">+</div>
+              </div>
+              <div class="card-row">
+                <div class="card-row-qty">10</div>
+                <div class="card-row-name">Plains</div>
+                <div class="card-row-mana"></div>
+                <div class="card-row-action">+</div>
+              </div>
+              <div class="card-row">
+                <div class="card-row-qty">10</div>
+                <div class="card-row-name">Island</div>
+                <div class="card-row-mana"></div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+            <!-- Sideboard (col 1) -->
+            <div class="type-group">
+              <div class="type-group-header">Sideboard (15)</div>
+              <div class="card-row">
+                <div class="card-row-qty">2</div>
+                <div class="card-row-name">Rest in Peace</div>
+                <div class="card-row-mana"><span class="mana-pip pip-w">W</span></div>
+                <div class="card-row-action">+</div>
+              </div>
+              <div class="card-row">
+                <div class="card-row-qty">3</div>
+                <div class="card-row-name">Mystical Dispute</div>
+                <div class="card-row-mana"><span class="mana-pip pip-2">2</span><span class="mana-pip pip-u">U</span></div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+          </div><!-- /.detail-card-list -->
+        </div><!-- /.detail-body -->
+      </main>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════
+       SCREEN 2b: DECK DETAIL — Potential Deck (Moxfield layout)
+       Action bar: Export | Move to Saved | Delete.
+       Cards show owned/missing indicator (dimmed if missing).
+  ═══════════════════════════════════════════════ -->
+  <div id="screen-detail-potential" class="screen">
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="sidebar-section">
+          <button class="sidebar-back-link" onclick="showScreen('list'); switchDeckTab('potential')">← Deck List</button>
+        </div>
+        <hr class="sidebar-divider" />
+        <div class="sidebar-section">
+          <span class="sidebar-deck-name" id="sidebar-deck-name-potential">Izzet Phoenix</span>
+          <div class="sidebar-meta">
+            <span>Imported 2026-03-27</span>
+            <span style="color:var(--primary); font-weight:600;">Potential Deck</span>
+            <span>34 / 60 owned</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <!-- Action bar -->
+        <div class="detail-action-bar">
+          <button class="btn-action">Export (Arena text)</button>
+          <button class="btn-action saved">Move to Saved</button>
+          <button class="btn-action danger">Delete</button>
+        </div>
+
+        <!-- Deck name header — name is directly editable -->
+        <div class="detail-deck-header">
+          <input
+            type="text"
+            class="deck-name-input"
+            id="detail-deck-title-potential"
+            value="Izzet Phoenix"
+            oninput="onDeckNameInput('potential')"
+          />
+          <button
+            class="deck-name-save"
+            id="deck-name-save-potential"
+            onclick="saveDeckName('potential', 'sidebar-deck-name-potential')"
+          >Save</button>
+          <div class="detail-deck-meta">
+            <span style="color:var(--primary); font-weight:600;">Potential Deck</span>
+            <span>34 / 60 owned</span>
+            <span>Imported 2026-03-27</span>
+          </div>
+        </div>
+
+        <div class="detail-body">
+          <div class="detail-card-image">
+            <div class="card-img-placeholder">card image</div>
+          </div>
+
+          <div class="detail-card-list">
+
+            <!-- Creatures -->
+            <div class="type-group">
+              <div class="type-group-header">Creatures (4)</div>
+              <div class="card-row">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Arclight Phoenix</div>
+                <div class="card-row-mana"><span class="mana-pip pip-2">3</span><span class="mana-pip pip-r">R</span></div>
+                <div class="card-row-owned full">4/4</div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+            <!-- Instants -->
+            <div class="type-group">
+              <div class="type-group-header">Instants (4)</div>
+              <!-- owned = required: full opacity -->
+              <div class="card-row">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Faithless Looting</div>
+                <div class="card-row-mana"><span class="mana-pip pip-r">R</span></div>
+                <div class="card-row-owned full">4/4</div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+            <!-- Sorceries -->
+            <div class="type-group">
+              <div class="type-group-header">Sorceries (8)</div>
+              <!-- missing: dimmed row -->
+              <div class="card-row card-missing">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Expressive Iteration</div>
+                <div class="card-row-mana"><span class="mana-pip pip-u">U</span><span class="mana-pip pip-r">R</span></div>
+                <div class="card-row-owned missing">0/4</div>
+                <div class="card-row-action">+</div>
+              </div>
+              <!-- partial: dimmed row -->
+              <div class="card-row card-missing">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Consider</div>
+                <div class="card-row-mana"><span class="mana-pip pip-u">U</span></div>
+                <div class="card-row-owned partial">2/4</div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+            <!-- Creatures col 2 — Murktide -->
+            <div class="type-group">
+              <div class="type-group-header">Enchantments (0) — Artifacts (0)</div>
+              <div style="padding:0.5rem 0.75rem; font-size:11px; color:var(--text-muted);">None</div>
+            </div>
+
+            <!-- Lands -->
+            <div class="type-group">
+              <div class="type-group-header">Lands (20)</div>
+              <div class="card-row card-missing">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Steam Vents</div>
+                <div class="card-row-mana"></div>
+                <div class="card-row-owned partial">2/4</div>
+                <div class="card-row-action">+</div>
+              </div>
+              <div class="card-row card-missing">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Murktide Regent</div>
+                <div class="card-row-mana"><span class="mana-pip pip-2">5</span><span class="mana-pip pip-u">U</span><span class="mana-pip pip-u">U</span></div>
+                <div class="card-row-owned missing">1/4</div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+            <!-- Sideboard -->
+            <div class="type-group">
+              <div class="type-group-header">Sideboard (4)</div>
+              <div class="card-row card-missing">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Pyroblast</div>
+                <div class="card-row-mana"><span class="mana-pip pip-r">R</span></div>
+                <div class="card-row-owned missing">0/4</div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+          </div><!-- /.detail-card-list -->
+        </div><!-- /.detail-body -->
+      </main>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════
+       SCREEN 2c: DECK DETAIL — Saved (Arena origin, Moxfield layout)
+       Action bar: Export | Unsave | Delete.
+       Source badge shown near deck name. Cards show owned/missing.
+  ═══════════════════════════════════════════════ -->
+  <div id="screen-detail-saved-arena" class="screen">
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="sidebar-section">
+          <button class="sidebar-back-link" onclick="showScreen('list'); switchDeckTab('saved')">← Deck List</button>
+        </div>
+        <hr class="sidebar-divider" />
+        <div class="sidebar-section">
+          <span class="sidebar-deck-name" id="sidebar-deck-name-saved-arena">Azorius Control</span>
+          <div class="sidebar-meta">
+            <span>Imported 2026-03-25</span>
+            <span><span class="source-badge arena">Arena Deck — Saved</span></span>
+            <span>58 / 75 owned</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <!-- Action bar -->
+        <div class="detail-action-bar">
+          <button class="btn-action">Export (Arena text)</button>
+          <button class="btn-action danger">Unsave</button>
+          <button class="btn-action danger">Delete</button>
+        </div>
+
+        <!-- Deck name header — name is directly editable -->
+        <div class="detail-deck-header">
+          <input
+            type="text"
+            class="deck-name-input"
+            id="detail-deck-title-saved-arena"
+            value="Azorius Control"
+            oninput="onDeckNameInput('saved-arena')"
+          />
+          <button
+            class="deck-name-save"
+            id="deck-name-save-saved-arena"
+            onclick="saveDeckName('saved-arena', 'sidebar-deck-name-saved-arena')"
+          >Save</button>
+          <div class="detail-deck-meta">
+            <span class="source-badge arena">Arena Deck</span>
+            <span>Saved 2026-03-29</span>
+            <span>58 / 75 owned</span>
+          </div>
+        </div>
+
+        <div class="detail-body">
+          <div class="detail-card-image">
+            <div class="card-img-placeholder">card image</div>
+          </div>
+
+          <div class="detail-card-list">
+
+            <!-- Planeswalkers -->
+            <div class="type-group">
+              <div class="type-group-header">Planeswalkers (7)</div>
+              <div class="card-row">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Teferi, Hero of Dominaria</div>
+                <div class="card-row-mana"><span class="mana-pip pip-2">3</span><span class="mana-pip pip-w">W</span><span class="mana-pip pip-u">U</span></div>
+                <div class="card-row-owned full">4/4</div>
+                <div class="card-row-action">+</div>
+              </div>
+              <div class="card-row">
+                <div class="card-row-qty">3</div>
+                <div class="card-row-name">Narset, Parter of Veils</div>
+                <div class="card-row-mana"><span class="mana-pip pip-2">2</span><span class="mana-pip pip-u">U</span></div>
+                <div class="card-row-owned full">3/3</div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+            <!-- Instants -->
+            <div class="type-group">
+              <div class="type-group-header">Instants (8)</div>
+              <div class="card-row">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Absorb</div>
+                <div class="card-row-mana"><span class="mana-pip pip-u">U</span><span class="mana-pip pip-w">W</span><span class="mana-pip pip-u">U</span></div>
+                <div class="card-row-owned full">4/4</div>
+                <div class="card-row-action">+</div>
+              </div>
+              <div class="card-row card-missing">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Counterspell</div>
+                <div class="card-row-mana"><span class="mana-pip pip-u">U</span><span class="mana-pip pip-u">U</span></div>
+                <div class="card-row-owned partial">2/4</div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+            <!-- Sorceries -->
+            <div class="type-group">
+              <div class="type-group-header">Sorceries (4)</div>
+              <div class="card-row">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Supreme Verdict</div>
+                <div class="card-row-mana"><span class="mana-pip pip-2">1</span><span class="mana-pip pip-w">W</span><span class="mana-pip pip-w">W</span><span class="mana-pip pip-u">U</span></div>
+                <div class="card-row-owned full">4/4</div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+            <!-- Lands -->
+            <div class="type-group">
+              <div class="type-group-header">Lands (24)</div>
+              <div class="card-row">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Hallowed Fountain</div>
+                <div class="card-row-mana"></div>
+                <div class="card-row-owned full">4/4</div>
+                <div class="card-row-action">+</div>
+              </div>
+              <div class="card-row card-missing">
+                <div class="card-row-qty">10</div>
+                <div class="card-row-name">Plains</div>
+                <div class="card-row-mana"></div>
+                <div class="card-row-owned partial">7/10</div>
+                <div class="card-row-action">+</div>
+              </div>
+              <div class="card-row">
+                <div class="card-row-qty">10</div>
+                <div class="card-row-name">Island</div>
+                <div class="card-row-mana"></div>
+                <div class="card-row-owned full">10/10</div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+            <!-- Sideboard -->
+            <div class="type-group">
+              <div class="type-group-header">Sideboard (17)</div>
+              <div class="card-row card-missing">
+                <div class="card-row-qty">2</div>
+                <div class="card-row-name">Rest in Peace</div>
+                <div class="card-row-mana"><span class="mana-pip pip-w">W</span></div>
+                <div class="card-row-owned missing">0/2</div>
+                <div class="card-row-action">+</div>
+              </div>
+              <div class="card-row">
+                <div class="card-row-qty">3</div>
+                <div class="card-row-name">Mystical Dispute</div>
+                <div class="card-row-mana"><span class="mana-pip pip-2">2</span><span class="mana-pip pip-u">U</span></div>
+                <div class="card-row-owned full">3/3</div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+          </div><!-- /.detail-card-list -->
+        </div><!-- /.detail-body -->
+      </main>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════
+       SCREEN 2d: DECK DETAIL — Saved (Former Potential origin, Moxfield layout)
+       Action bar: Export | Unsave | Delete.
+       Source badge: Former Potential. Cards show owned/missing.
+  ═══════════════════════════════════════════════ -->
+  <div id="screen-detail-saved-potential" class="screen">
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="sidebar-section">
+          <button class="sidebar-back-link" onclick="showScreen('list'); switchDeckTab('saved')">← Deck List</button>
+        </div>
+        <hr class="sidebar-divider" />
+        <div class="sidebar-section">
+          <span class="sidebar-deck-name" id="sidebar-deck-name-saved-potential">Izzet Phoenix</span>
+          <div class="sidebar-meta">
+            <span>Saved 2026-03-28</span>
+            <span><span class="source-badge potential">Former Potential — Saved</span></span>
+            <span>34 / 60 owned</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <!-- Action bar -->
+        <div class="detail-action-bar">
+          <button class="btn-action">Export (Arena text)</button>
+          <button class="btn-action danger">Unsave</button>
+          <button class="btn-action danger">Delete</button>
+        </div>
+
+        <!-- Deck name header — name is directly editable -->
+        <div class="detail-deck-header">
+          <input
+            type="text"
+            class="deck-name-input"
+            id="detail-deck-title-saved-potential"
+            value="Izzet Phoenix"
+            oninput="onDeckNameInput('saved-potential')"
+          />
+          <button
+            class="deck-name-save"
+            id="deck-name-save-saved-potential"
+            onclick="saveDeckName('saved-potential', 'sidebar-deck-name-saved-potential')"
+          >Save</button>
+          <div class="detail-deck-meta">
+            <span class="source-badge potential">Former Potential</span>
+            <span>Saved 2026-03-28</span>
+            <span>34 / 60 owned</span>
+          </div>
+        </div>
+
+        <div class="detail-body">
+          <div class="detail-card-image">
+            <div class="card-img-placeholder">card image</div>
+          </div>
+
+          <div class="detail-card-list">
+
+            <!-- Creatures -->
+            <div class="type-group">
+              <div class="type-group-header">Creatures (4)</div>
+              <div class="card-row">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Arclight Phoenix</div>
+                <div class="card-row-mana"><span class="mana-pip pip-2">3</span><span class="mana-pip pip-r">R</span></div>
+                <div class="card-row-owned full">4/4</div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+            <!-- Instants -->
+            <div class="type-group">
+              <div class="type-group-header">Instants (4)</div>
+              <div class="card-row">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Faithless Looting</div>
+                <div class="card-row-mana"><span class="mana-pip pip-r">R</span></div>
+                <div class="card-row-owned full">4/4</div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+            <!-- Sorceries -->
+            <div class="type-group">
+              <div class="type-group-header">Sorceries (8)</div>
+              <div class="card-row card-missing">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Expressive Iteration</div>
+                <div class="card-row-mana"><span class="mana-pip pip-u">U</span><span class="mana-pip pip-r">R</span></div>
+                <div class="card-row-owned missing">0/4</div>
+                <div class="card-row-action">+</div>
+              </div>
+              <div class="card-row card-missing">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Consider</div>
+                <div class="card-row-mana"><span class="mana-pip pip-u">U</span></div>
+                <div class="card-row-owned partial">2/4</div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+            <!-- Creatures cont (Murktide) -->
+            <div class="type-group">
+              <div class="type-group-header">Creatures cont. (4)</div>
+              <div class="card-row card-missing">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Murktide Regent</div>
+                <div class="card-row-mana"><span class="mana-pip pip-2">5</span><span class="mana-pip pip-u">U</span><span class="mana-pip pip-u">U</span></div>
+                <div class="card-row-owned missing">1/4</div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+            <!-- Lands -->
+            <div class="type-group">
+              <div class="type-group-header">Lands (20)</div>
+              <div class="card-row card-missing">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Steam Vents</div>
+                <div class="card-row-mana"></div>
+                <div class="card-row-owned partial">2/4</div>
+                <div class="card-row-action">+</div>
+              </div>
+              <div class="card-row">
+                <div class="card-row-qty">16</div>
+                <div class="card-row-name">Mountain / Island basics</div>
+                <div class="card-row-mana"></div>
+                <div class="card-row-owned full">16/16</div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+            <!-- Sideboard -->
+            <div class="type-group">
+              <div class="type-group-header">Sideboard (4)</div>
+              <div class="card-row card-missing">
+                <div class="card-row-qty">4</div>
+                <div class="card-row-name">Pyroblast</div>
+                <div class="card-row-mana"><span class="mana-pip pip-r">R</span></div>
+                <div class="card-row-owned missing">0/4</div>
+                <div class="card-row-action">+</div>
+              </div>
+            </div>
+
+          </div><!-- /.detail-card-list -->
+        </div><!-- /.detail-body -->
+      </main>
+    </div>
+  </div>
+
+
+  <script>
+    function showScreen(name) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById('screen-' + name).classList.add('active');
+    }
+
+    function switchDeckTab(tab) {
+      ['mydecks', 'potential', 'saved'].forEach(function(t) {
+        document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+        document.getElementById('panel-' + t).style.display = t === tab ? 'block' : 'none';
+      });
+    }
+
+    /* ── INLINE DECK NAME EDIT ── */
+
+    // Store original values so we can detect change
+    var _deckNameOriginals = {};
+
+    // Called once each screen is first loaded (or on page load)
+    function initDeckNameEdit(key) {
+      var input = document.getElementById('detail-deck-title-' + key);
+      if (input) {
+        _deckNameOriginals[key] = input.value;
+      }
+    }
+
+    // Called on every keystroke via oninput
+    function onDeckNameInput(key) {
+      var input = document.getElementById('detail-deck-title-' + key);
+      var saveBtn = document.getElementById('deck-name-save-' + key);
+      if (!input || !saveBtn) return;
+      var changed = input.value.trim() !== (_deckNameOriginals[key] || '').trim();
+      saveBtn.classList.toggle('visible', changed);
+    }
+
+    // Called when Save button is clicked
+    function saveDeckName(key, sidebarId) {
+      var input = document.getElementById('detail-deck-title-' + key);
+      var saveBtn = document.getElementById('deck-name-save-' + key);
+      if (!input) return;
+      var newName = input.value.trim();
+      if (newName) {
+        // Persist to sidebar label
+        var sidebar = document.getElementById(sidebarId);
+        if (sidebar) sidebar.textContent = newName;
+        // Update original so Save hides again
+        _deckNameOriginals[key] = newName;
+        saveBtn.classList.remove('visible');
+      }
+    }
+
+    // Initialise originals for all deck screens on load
+    window.addEventListener('load', function() {
+      ['arena', 'potential', 'saved-arena', 'saved-potential'].forEach(initDeckNameEdit);
+    });
+  </script>
+</body>
+</html>

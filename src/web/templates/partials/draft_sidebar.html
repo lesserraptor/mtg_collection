@@ -1,0 +1,93 @@
+<div id="draft-sidebar">
+  <div class="sidebar-section" style="margin-bottom:1rem;">
+    {% if not draft_scanning %}
+    <form method="post" action="/draft/scan/start" style="margin:0;">
+      <button type="submit" style="width:100%; background:#1a5c2e; color:#86efac; border:1px solid #22c55e; padding:0.4rem 1rem; border-radius:4px; cursor:pointer; font-size:0.85rem;">&#9679; Start Listening</button>
+    </form>
+    {% else %}
+    <form method="post" action="/draft/scan/stop" style="margin:0;">
+      <button type="submit" style="width:100%; background:#3a1a1a; color:#fca5a5; border:1px solid #ef4444; padding:0.4rem 1rem; border-radius:4px; cursor:pointer; font-size:0.85rem;">&#9632; Stop Listening</button>
+    </form>
+    {% endif %}
+    {% if scan_error %}
+    <div style="color:#f87171; font-size:0.8rem; margin-top:0.4rem;">{{ scan_error }}</div>
+    {% endif %}
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-label">Color focus</div>
+    <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+      {% for color, cls in [('W','w'),('U','u'),('B','b'),('R','r'),('G','g')] %}
+      <button type="button"
+        hx-post="/draft/colors/toggle"
+        hx-vals='{"color": "{{ color }}"}'
+        hx-target="#draft-sidebar"
+        hx-swap="outerHTML"
+        style="width:28px; height:28px; border-radius:50%; border:2px solid {% if color in color_filter %}#fff{% else %}transparent{% endif %}; background:transparent; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center; opacity:{% if color in color_filter %}1{% else %}0.45{% endif %};">
+        <i class="ms ms-{{ cls }} ms-cost" style="font-size:1.1rem;"></i>
+      </button>
+      {% endfor %}
+      {% if color_filter %}
+      <button type="button"
+        hx-post="/draft/colors/clear"
+        hx-target="#draft-sidebar"
+        hx-swap="outerHTML"
+        style="font-size:0.7rem; color:#888; background:none; border:none; cursor:pointer; padding:0 0.25rem; align-self:center;">
+        clear
+      </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="sidebar-section" style="margin-top:1rem;">
+    <div class="sidebar-label">Set</div>
+    <div style="font-size:0.75rem; color:#666; margin-bottom:0.3rem;">
+      {% if detected_set %}detected: {{ detected_set }}{% else %}not detected{% endif %}
+    </div>
+    <form hx-post="/draft/set/set" hx-target="#draft-sidebar" hx-swap="outerHTML" style="display:flex; flex-direction:column; gap:0.3rem;">
+      <select name="set_code"
+              onchange="this.form.requestSubmit()"
+              style="background:#1a1a2e; border:1px solid {% if set_override %}#7c3aed{% else %}#333{% endif %}; color:{% if set_override %}#e2e8f0{% else %}#888{% endif %}; border-radius:4px; padding:0.25rem 0.4rem; font-size:0.8rem; cursor:pointer; width:100%;">
+        <option value="">— auto-detect —</option>
+        {% for s in draft_sets %}
+        <option value="{{ s.code }}" {% if s.code|upper == set_override|upper or (not set_override and s.code|upper == detected_set|upper) %}selected{% endif %}>
+          {{ s.name }} ({{ s.code|upper }})
+        </option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+
+  <div class="sidebar-section" style="margin-top:1rem;">
+    <div class="sidebar-label">Format</div>
+    <div style="display:flex; flex-direction:column; gap:0.3rem;">
+      {% for fmt_key in ALLOWED_FORMATS %}
+      <button type="button"
+        hx-post="/draft/format/set"
+        hx-vals='{"format": "{{ fmt_key }}"}'
+        hx-target="#draft-sidebar"
+        hx-swap="outerHTML"
+        style="text-align:left; padding:0.3rem 0.6rem; border-radius:4px; border:1px solid {% if fmt_key == draft_format %}#7c3aed{% else %}#333{% endif %}; background:{% if fmt_key == draft_format %}#3b1f6e{% else %}transparent{% endif %}; color:{% if fmt_key == draft_format %}#e2e8f0{% else %}#888{% endif %}; cursor:pointer; font-size:0.8rem;">
+        {{ fmt_key }}{% if fmt_key == detected_format %} <span style="color:#666;font-size:0.7rem;">(detected)</span>{% endif %}
+      </button>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="sidebar-section" style="margin-top:1rem;">
+    <div class="sidebar-label">Rank by</div>
+    <div style="display:flex; flex-direction:column; gap:0.3rem;">
+      {% for key in metric_order %}
+      {% set m = METRICS[key] %}
+      <button type="button"
+        hx-post="/draft/metric/set"
+        hx-vals='{"metric": "{{ key }}"}'
+        hx-target="#draft-sidebar"
+        hx-swap="outerHTML"
+        style="text-align:left; padding:0.3rem 0.6rem; border-radius:4px; border:1px solid {% if key == metric %}#7c3aed{% else %}#333{% endif %}; background:{% if key == metric %}#3b1f6e{% else %}transparent{% endif %}; color:{% if key == metric %}#e2e8f0{% else %}#888{% endif %}; cursor:pointer; font-size:0.8rem;">
+        {{ m.label }}
+      </button>
+      {% endfor %}
+    </div>
+  </div>
+</div>

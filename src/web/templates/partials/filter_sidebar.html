@@ -1,0 +1,235 @@
+<form id="filter-form"
+      hx-get="/cards"
+      hx-target="#card-grid"
+      hx-swap="outerHTML"
+      hx-push-url="true"
+      hx-params="*"
+      hx-trigger="change"
+      style="display:flex; flex-direction:column; height:100%">
+
+  <div>
+    <button id="refresh-coll-btn" type="button"
+      onclick="startCollectionRefresh(this)"
+      class="btn-action-primary">
+      Refresh Collection
+    </button>
+    <div id="refresh-coll-progress" style="display:none; margin-top:6px">
+      <div style="background:#e9ecef; border-radius:3px; height:6px; overflow:hidden">
+        <div id="refresh-coll-bar" style="background:#0d6efd; height:100%; width:0%; transition:width 0.3s"></div>
+      </div>
+      <div id="refresh-coll-msg" style="font-size:11px; color:#666; margin-top:4px"></div>
+    </div>
+  </div>
+
+  <!-- Name search: handled by its own hx-trigger for keyup debounce.
+       onchange stopPropagation prevents the form's "change" listener from also
+       firing a redundant full-form request when the text field loses focus. -->
+  <div class="filter-section">
+    <label class="filter-label">Search</label>
+    <input type="text"
+           name="name"
+           value="{{ name }}"
+           placeholder="Card name…"
+           class="filter-input"
+           hx-get="/cards"
+           hx-target="#card-grid"
+           hx-swap="outerHTML"
+           hx-push-url="true"
+           hx-params="*"
+           hx-trigger="keyup changed delay:400ms"
+           hx-include="#filter-form"
+           onchange="event.stopPropagation()" />
+  </div>
+
+  <!-- Oracle text search: debounced keyup, same HTMX pattern as name search -->
+  <div class="filter-section">
+    <label class="filter-label">Oracle Text</label>
+    <input type="text"
+           name="oracle_text"
+           value="{{ oracle_text }}"
+           placeholder="Rules text…"
+           class="filter-input"
+           hx-get="/cards"
+           hx-target="#card-grid"
+           hx-swap="outerHTML"
+           hx-push-url="true"
+           hx-params="*"
+           hx-trigger="keyup changed delay:400ms"
+           hx-include="#filter-form"
+           onchange="event.stopPropagation()" />
+  </div>
+
+  <!-- Color filter: circular clickable buttons -->
+  <div class="filter-section">
+    <label class="filter-label">Colors</label>
+    <div class="color-grid">
+      {% set mana_icon = {"W": "w", "U": "u", "B": "b", "R": "r", "G": "g", "C": "c", "M": None} %}
+      {% for code, label in [("W","White"),("U","Blue"),("B","Black"),("R","Red"),("G","Green"),("C","Colorless"),("M","Multi")] %}
+      <input type="checkbox" name="colors" value="{{ code }}" id="color-cb-{{ code }}" style="display:none"
+             {{ 'checked' if code in selected_colors else '' }} />
+      <div class="color-btn color-{{ code }} {% if code in selected_colors %}active{% endif %}"
+           title="{{ label }}"
+           onclick="var cb=document.getElementById('color-cb-{{ code }}'); cb.checked=!cb.checked; this.classList.toggle('active',cb.checked); cb.dispatchEvent(new Event('change',{bubbles:true}))">
+        {% if mana_icon[code] %}
+          <i class="ms ms-{{ mana_icon[code] }}"></i>
+        {% else %}
+          <span style="font-size:9px;font-weight:700">M</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Rarity filter: pill buttons -->
+  <div class="filter-section">
+    <label class="filter-label">Rarity</label>
+    <div class="rarity-pills">
+      {% for r, pill_class in [("common","pill-C"),("uncommon","pill-U"),("rare","pill-R"),("mythic","pill-M")] %}
+      <input type="checkbox" name="rarity" value="{{ r }}" id="rarity-cb-{{ r }}" style="display:none"
+             {{ 'checked' if r in selected_rarity else '' }} />
+      <span class="pill {{ pill_class }} {% if r in selected_rarity %}active{% endif %}"
+            onclick="var cb=document.getElementById('rarity-cb-{{ r }}'); cb.checked=!cb.checked; this.classList.toggle('active',cb.checked); cb.dispatchEvent(new Event('change',{bubbles:true}))">
+        {{ r | capitalize }}
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Card Type -->
+  <div class="filter-section">
+    <label class="filter-label">Card Type</label>
+    <select name="type_line" id="type-line-select" class="filter-input"
+            onchange="document.getElementById('creature-type-section').style.display = (this.value === 'Creature') ? '' : 'none'; if(this.value !== 'Creature') document.getElementById('creature-type-select').value = '';">
+      <option value="" {{ 'selected' if not type_line else '' }}>Any type</option>
+      {% for t in ["Creature","Instant","Sorcery","Enchantment","Artifact","Planeswalker","Land","Battle"] %}
+      <option value="{{ t }}" {{ 'selected' if type_line == t else '' }}>{{ t }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- Creature Type (visible only when Card Type = Creature) -->
+  <div class="filter-section" id="creature-type-section" style="{{ '' if type_line == 'Creature' else 'display:none' }}">
+    <label class="filter-label">Creature Type</label>
+    <select name="creature_type" id="creature-type-select" class="filter-input">
+      <option value="" {{ 'selected' if not creature_type else '' }}>Any creature type</option>
+      {% for ct in all_creature_types %}
+      <option value="{{ ct }}" {{ 'selected' if creature_type == ct else '' }}>{{ ct }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- CMC -->
+  <div class="filter-section">
+    <label class="filter-label">Mana Value (CMC)</label>
+    <select name="cmc_max" class="filter-input">
+      <option value="" {{ 'selected' if cmc_max is none else '' }}>Any</option>
+      {% for v in [0, 1, 2, 3, 4, 5] %}
+      <option value="{{ v }}" {{ 'selected' if cmc_max == v else '' }}>{{ v }}</option>
+      {% endfor %}
+      <option value="99" {{ 'selected' if cmc_max == 99 else '' }}>6+</option>
+    </select>
+  </div>
+
+  <!-- Set filter -->
+  <div class="filter-section">
+    <label class="filter-label">Set</label>
+    <select name="set_code" class="filter-input">
+      <option value="" {{ 'selected' if not set_code else '' }}>All sets</option>
+      {% for s in sets %}
+      <option value="{{ s.code }}" {{ 'selected' if s.code == set_code else '' }}>{{ s.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- Keyword filter (hidden if no keywords in DB) -->
+  {% if all_keywords %}
+  <div class="filter-section">
+    <label class="filter-label">Keyword Ability</label>
+    <select name="keywords" class="filter-input">
+      <option value="" {{ 'selected' if not selected_keywords else '' }}>Any keyword</option>
+      {% for kw in all_keywords %}
+      <option value="{{ kw }}" {{ 'selected' if kw in selected_keywords else '' }}>{{ kw }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  {% endif %}
+
+  <!-- Copies Owned filter: multi-select chips -->
+  <div class="filter-section">
+    <label class="filter-label">Copies Owned</label>
+    <input type="hidden" name="copies_active" value="{{ '1' if copies_active else '0' }}" id="copies-active-input">
+    <div class="rarity-pills">
+      {% for count, label in [(1,"1"),(2,"2"),(3,"3"),(4,"4+"),(0,"0")] %}
+      <input type="checkbox" name="owned_copies" value="{{ count }}" id="owned-cb-{{ count }}"
+             style="display:none"
+             {{ 'checked' if (owned_copies and count in owned_copies) or (not copies_active and count > 0) else '' }} />
+      <span class="pill {% if (owned_copies and count in owned_copies) or (not copies_active and count > 0) %}active{% endif %}"
+            onclick="var cb=document.getElementById('owned-cb-{{ count }}'); cb.checked=!cb.checked; this.classList.toggle('active',cb.checked); document.getElementById('copies-active-input').value='1'; cb.dispatchEvent(new Event('change',{bubbles:true}))">
+        {{ label }}
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Hidden: reset page to 1 on filter change -->
+  <!-- per_page and sort are intentionally omitted here; the selects in the
+       pagination bar own those values via hx-include="#filter-form" + their own
+       name attributes, so keeping hidden inputs here would shadow newly-selected values. -->
+  <input type="hidden" name="page" value="1" />
+  <!-- Preserve sort value when filters change; the sort select in the pagination
+       bar updates this via its onchange handler -->
+  <input type="hidden" name="sort" id="sort-hidden" value="{{ sort }}" />
+
+  <hr class="sidebar-divider" />
+  <a href="/cards" class="clear-link">Clear all filters</a>
+
+  <script>
+  function startCollectionRefresh(btn) {
+    btn.disabled = true;
+    btn.textContent = 'Refreshing\u2026';
+    var prog = document.getElementById('refresh-coll-progress');
+    var bar = document.getElementById('refresh-coll-bar');
+    var msg = document.getElementById('refresh-coll-msg');
+    prog.style.display = 'block';
+    bar.style.width = '0%';
+    msg.textContent = '';
+
+    fetch('/settings/refresh-collection', {method: 'POST'})
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var es = new EventSource('/settings/reload-stream/collection?token=' + data.token);
+        es.addEventListener('progress', function(e) {
+          var evt = JSON.parse(e.data);
+          if (evt.pct !== undefined) bar.style.width = evt.pct + '%';
+          if (evt.message) msg.textContent = evt.message;
+          if (evt.stage === 'done') {
+            es.close();
+            btn.disabled = false;
+            btn.textContent = 'Refresh Collection';
+            if (evt.status && evt.status.endsWith('_ok')) {
+              msg.textContent = 'Collection updated!';
+              setTimeout(function() { prog.style.display = 'none'; }, 3000);
+            } else {
+              msg.style.color = '#dc3545';
+              msg.textContent = evt.message || 'Refresh failed.';
+              setTimeout(function() { prog.style.display = 'none'; msg.style.color = '#666'; }, 5000);
+            }
+          }
+        });
+        es.onerror = function() {
+          es.close();
+          btn.disabled = false;
+          btn.textContent = 'Refresh Collection';
+          msg.style.color = '#dc3545';
+          msg.textContent = 'Connection error.';
+          setTimeout(function() { prog.style.display = 'none'; msg.style.color = '#666'; }, 3000);
+        };
+      })
+      .catch(function() {
+        btn.disabled = false;
+        btn.textContent = 'Refresh Collection';
+      });
+  }
+  </script>
+
+</form>

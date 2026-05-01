@@ -1,0 +1,54 @@
+<div style="padding:20px 24px; border-bottom:1px solid #dee2e6; display:flex; justify-content:space-between; align-items:center">
+  <h3 style="margin:0; font-size:16px">Scan Review</h3>
+</div>
+<div style="padding:16px 24px; overflow-y:auto; max-height:60vh; display:flex; flex-direction:column; gap:18px">
+
+  {% if new_decks %}
+  <div>
+    <div style="font-size:13px; font-weight:600; margin-bottom:6px">{{ new_decks|length }} deck{{ 's' if new_decks|length != 1 else '' }} to be imported</div>
+    <details style="font-size:12px; color:#666">
+      <summary style="cursor:pointer">See details</summary>
+      <ul style="margin:6px 0 0 16px; padding:0">
+        {% for deck in new_decks %}<li>{{ deck.name }}</li>{% endfor %}
+      </ul>
+    </details>
+  </div>
+  {% endif %}
+
+  {% if changed_decks %}
+  <div>
+    <div style="font-size:13px; font-weight:600; margin-bottom:6px">{{ changed_decks|length }} deck{{ 's' if changed_decks|length != 1 else '' }} with changes</div>
+    <table style="width:100%; border-collapse:collapse; font-size:13px">
+      <tbody>
+        {% for deck in changed_decks %}
+        <tr style="border-bottom:1px solid #f0f0f0">
+          <td style="padding:6px 8px">{{ deck.name }}</td>
+          <td style="padding:6px 8px; white-space:nowrap"><label style="cursor:pointer; margin-right:14px"><input type="radio" name="changed_{{ deck.deck_id }}" value="add_version" checked style="margin-right:4px">Add new version</label><label style="cursor:pointer"><input type="radio" name="changed_{{ deck.deck_id }}" value="replace" style="margin-right:4px">Replace existing</label></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if missing_decks %}
+  <div>
+    <div style="font-size:13px; font-weight:600; margin-bottom:6px">{{ missing_decks|length }} deck{{ 's' if missing_decks|length != 1 else '' }} removed from Arena</div>
+    <table style="width:100%; border-collapse:collapse; font-size:13px">
+      <tbody>
+        {% for deck in missing_decks %}
+        <tr style="border-bottom:1px solid #f0f0f0">
+          <td style="padding:6px 8px">{{ deck.name }}</td>
+          <td style="padding:6px 8px; white-space:nowrap"><label style="cursor:pointer; margin-right:14px"><input type="radio" name="missing_{{ deck.deck_id }}" value="archive" checked style="margin-right:4px">Archive to saved decks</label><label style="cursor:pointer"><input type="radio" name="missing_{{ deck.deck_id }}" value="delete" style="margin-right:4px">Delete entirely</label></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+</div>
+<div style="padding:16px 24px; border-top:1px solid #dee2e6; display:flex; justify-content:space-between; align-items:center">
+  <button onclick="cancelDecisions()" class="pill" style="cursor:pointer; padding:6px 14px; font-size:13px; color:#666">Cancel — I'll deal with this later</button>
+  <button onclick="applyAll()" class="pill active" style="cursor:pointer; padding:6px 14px; font-size:13px">Apply All</button>
+</div>

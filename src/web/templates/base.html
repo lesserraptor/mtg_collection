@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}MTG Collection{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/mana.css" />
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+
+  <nav class="navbar">
+    <a class="navbar-brand" href="/cards">MTG Collection</a>
+    <div class="nav-tabs">
+      <a class="nav-tab {% if mode == 'collection' %}active{% endif %}" href="/cards">Collection</a>
+      <a class="nav-tab {% if mode in ['decks','potential','saved'] %}active{% endif %}" href="/decks">Decks</a>
+      <a class="nav-tab {% if mode == 'analysis' %}active{% endif %}" href="/analysis">Analysis</a>
+      <a class="nav-tab {% if mode == 'changes' %}active{% endif %}" href="/changes">Changes</a>
+      <a class="nav-tab {% if mode == 'draft' %}active{% endif %}" href="/draft">Draft</a>
+      <a class="nav-tab {% if mode == 'settings' %}active{% endif %}" href="/settings">Settings</a>
+    </div>
+  </nav>
+
+  <div class="layout">
+    <aside class="sidebar">
+      {% block sidebar %}{% endblock %}
+    </aside>
+    <main class="main">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <!-- Set detail modal -->
+  <div id="set-modal-overlay" onclick="closeSetModal()"></div>
+  <div id="set-modal">
+    <button class="detail-close" onclick="closeSetModal()" aria-label="Close">&#x2715;</button>
+    <div id="set-modal-body"></div>
+  </div>
+
+  <!-- Detail panel -->
+  <div id="detail-overlay" onclick="closeDetailPanel()"></div>
+  <aside id="detail-panel">
+    <button class="detail-close" onclick="closeDetailPanel()" aria-label="Close">&#x2715;</button>
+    <div id="detail-panel-body"></div>
+  </aside>
+
+  <script src="/static/htmx.min.js"></script>
+  <script>
+    function openDetailPanel() {
+      document.getElementById('detail-overlay').classList.add('open');
+      document.getElementById('detail-panel').classList.add('open');
+    }
+    function closeDetailPanel() {
+      document.getElementById('detail-overlay').classList.remove('open');
+      document.getElementById('detail-panel').classList.remove('open');
+    }
+    function openSetModal() {
+      document.getElementById('set-modal-overlay').classList.add('open');
+      document.getElementById('set-modal').classList.add('open');
+    }
+    function closeSetModal() {
+      document.getElementById('set-modal-overlay').classList.remove('open');
+      document.getElementById('set-modal').classList.remove('open');
+    }
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') { closeDetailPanel(); closeSetModal(); }
+    });
+    // Open panel/modal after HTMX swaps content
+    document.body.addEventListener('htmx:afterSwap', function(e) {
+      if (e.detail.target.id === 'detail-panel-body') openDetailPanel();
+      if (e.detail.target.id === 'set-modal-body') openSetModal();
+    });
+  </script>
+  {% block page_scripts %}{% endblock %}
+  {% block body_end %}{% endblock %}
+</body>
+</html>
