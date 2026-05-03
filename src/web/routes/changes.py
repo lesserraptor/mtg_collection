@@ -49,7 +49,15 @@ FEED_QUERY = """
     JOIN collection_snapshots cs ON cs.id = csd.snapshot_id
     LEFT JOIN cards c ON c.arena_id = csd.arena_id
     WHERE csd.diff > 0 AND cs.id IN ({placeholders})
-    ORDER BY cs.snapshot_at DESC, COALESCE(c.name, csd.card_name) ASC
+    ORDER BY cs.snapshot_at DESC,
+        CASE c.rarity
+            WHEN 'mythic' THEN 1
+            WHEN 'rare' THEN 2
+            WHEN 'uncommon' THEN 3
+            WHEN 'common' THEN 4
+            ELSE 5
+        END,
+        COALESCE(c.name, csd.card_name) ASC
 """
 
 
