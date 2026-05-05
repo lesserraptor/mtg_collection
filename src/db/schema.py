@@ -171,6 +171,19 @@ def create_schema(conn: sqlite3.Connection) -> None:
             quantity    INTEGER NOT NULL DEFAULT 1,
             section     TEXT    NOT NULL DEFAULT 'mainboard'
         );
+
+        CREATE TABLE IF NOT EXISTS wallet_snapshots (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            date          TEXT    NOT NULL UNIQUE,
+            gems          INTEGER NOT NULL DEFAULT 0,
+            gold          INTEGER NOT NULL DEFAULT 0,
+            mythic_wc     INTEGER NOT NULL DEFAULT 0,
+            rare_wc       INTEGER NOT NULL DEFAULT 0,
+            uncommon_wc   INTEGER NOT NULL DEFAULT 0,
+            common_wc     INTEGER NOT NULL DEFAULT 0,
+            draft_tokens  INTEGER NOT NULL DEFAULT 0,
+            total_cards   INTEGER NOT NULL DEFAULT 0
+        );
     """)
 
 

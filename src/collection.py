@@ -6,12 +6,12 @@ the MTGA companion app) and upserts it into the app's collection table.
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, date, timezone
 from pathlib import Path
 
-# Default paths checked in order: Untapped JSON (Linux/Steam/Proton) first, then relative fallback.
+from src.db.log_parser import find_player_log, parse_log_wallet
+
 DEFAULT_COLLECTION_PATHS = [
-    # Untapped JSON written by patched asar (SCP'd from Linux machine)
     Path.home() / ".local/share/Steam/steamapps/compatdata/2141910/pfx/drive_c/x.json",
     Path("./x.json"),
 ]
@@ -130,4 +130,44 @@ def upsert_collection(conn: sqlite3.Connection, path: Path, progress_callback=No
     new_snap = _snapshot_collection(conn)
     _persist_diff(conn, old_snap, new_snap)
 
+    # 4. Capture wallet snapshot
+    _capture_wallet_snapshot(conn)
+
     return len(rows)
+
+
+def _capture_wallet_snapshot(conn: sqlite3.Connection) -> None:
+    """Capture current wallet state to wallet_snapshots table.
+
+    Reads wallet data from Player.log and calculates total_cards from collection.
+    Uses INSERT OR REPLACE to keep latest value per day.
+    """
+    today = date.today().isoformat()
+
+    wallet = parse_log_wallet(find_player_log(conn))
+    if wallet is None:
+        return
+
+    total_cards = conn.execute("""
+        SELECT COUNT(DISTINCT LOWER(c.name))
+        FROM cards c
+        JOIN collection col ON c.arena_id = col.arena_id
+        WHERE col.quantity > 0
+    """).fetchone()[0] or 0
+
+    conn.execute("""
+        INSERT OR REPLACE INTO wallet_snapshots
+        (date, gems, gold, mythic_wc, rare_wc, uncommon_wc, common_wc, draft_tokens, total_cards)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        today,
+        wallet.get("gems", 0),
+        wallet.get("gold", 0),
+        wallet.get("mythic_wc", 0),
+        wallet.get("rare_wc", 0),
+        wallet.get("uncommon_wc", 0),
+        wallet.get("common_wc", 0),
+        wallet.get("draft_tokens", 0),
+        total_cards,
+    ))
+    conn.commit()

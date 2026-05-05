@@ -21,6 +21,7 @@ from src.web.routes import settings as settings_router
 from src.web.routes import changes as changes_router
 from src.web.routes import sets as sets_router
 from src.web.routes import draft as draft_router
+from src.web.routes import metrics as metrics_router
 
 app = FastAPI(title="MTGA Collection Browser")
 
@@ -217,3 +218,4 @@ app.include_router(settings_router.router)
 app.include_router(changes_router.router)
 app.include_router(sets_router.router)
 app.include_router(draft_router.router)
+app.include_router(metrics_router.router)

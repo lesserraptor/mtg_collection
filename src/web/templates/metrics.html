@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}Resource Metrics - MTG Collection{% endblock %}
+
+{% block content %}
+<div class="metrics-page">
+  <div class="page-header">
+    <h1>Resource Metrics</h1>
+  </div>
+
+  <div class="timeframe-selector">
+    <a href="/metrics?range=30" class="timeframe-btn {% if range == '30' %}active{% endif %}">30 Days</a>
+    <a href="/metrics?range=90" class="timeframe-btn {% if range == '90' %}active{% endif %}">90 Days</a>
+    <a href="/metrics?range=180" class="timeframe-btn {% if range == '180' %}active{% endif %}">180 Days</a>
+    <a href="/metrics?range=365" class="timeframe-btn {% if range == '365' %}active{% endif %}">1 Year</a>
+    <a href="/metrics?range=all" class="timeframe-btn {% if range == 'all' %}active{% endif %}">All Time</a>
+  </div>
+
+  <div class="charts-grid">
+    <div class="chart-card">
+      <h3>Gems</h3>
+      <div class="chart-container">
+        <canvas id="chart-gems"></canvas>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <h3>Gold</h3>
+      <div class="chart-container">
+        <canvas id="chart-gold"></canvas>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <h3>Wildcards</h3>
+      <div class="chart-container">
+        <canvas id="chart-wildcards"></canvas>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <h3>Draft Tokens</h3>
+      <div class="chart-container">
+        <canvas id="chart-draft"></canvas>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <h3>Total Cards</h3>
+      <div class="chart-container">
+        <canvas id="chart-cards"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div id="no-data-message" class="no-data" style="display:none;">
+    <p>No metrics data available yet. Wallet data will be captured when your collection is updated.</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block body_end %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const charts = {};
+
+function createChart(canvasId, label, data, color) {
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  if (charts[canvasId]) {
+    charts[canvasId].destroy();
+  }
+  charts[canvasId] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: window.metricLabels,
+      datasets: [{
+        label: label,
+        data: data,
+        borderColor: color,
+        backgroundColor: color + '20',
+        fill: true,
+        tension: 0.1
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        y: { beginAtZero: false }
+      }
+    }
+  });
+}
+
+async function loadMetrics() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const range = urlParams.get('range') || '90';
+
+  try {
+    const resp = await fetch(`/metrics/data?range=${range}`);
+    const data = await resp.json();
+
+    if (!data.labels || data.labels.length === 0) {
+      document.getElementById('no-data-message').style.display = 'block';
+      document.querySelector('.charts-grid').style.display = 'none';
+      return;
+    }
+
+    document.getElementById('no-data-message').style.display = 'none';
+    document.querySelector('.charts-grid').style.display = 'grid';
+
+    window.metricLabels = data.labels;
+
+    const datasets = {};
+    for (const ds of data.datasets) {
+      datasets[ds.label] = ds.data;
+    }
+
+    createChart('chart-gems', 'Gems', datasets['Gems'] || [], '#a855f7');
+    createChart('chart-gold', 'Gold', datasets['Gold'] || [], '#eab308');
+
+    const wildcards = [
+      datasets['Mythic WC'] || [],
+      datasets['Rare WC'] || [],
+      datasets['Uncommon WC'] || [],
+      datasets['Common WC'] || []
+    ];
+    const wcCtx = document.getElementById('chart-wildcards').getContext('2d');
+    if (charts['chart-wildcards']) charts['chart-wildcards'].destroy();
+    charts['chart-wildcards'] = new Chart(wcCtx, {
+      type: 'line',
+      data: {
+        labels: data.labels,
+        datasets: [
+          { label: 'Mythic', data: wildcards[0], borderColor: '#f97316', backgroundColor: '#f9731620', fill: true, tension: 0.1 },
+          { label: 'Rare', data: wildcards[1], borderColor: '#3b82f6', backgroundColor: '#3b82f620', fill: true, tension: 0.1 },
+          { label: 'Uncommon', data: wildcards[2], borderColor: '#22c55e', backgroundColor: '#22c55e20', fill: true, tension: 0.1 },
+          { label: 'Common', data: wildcards[3], borderColor: '#6b7280', backgroundColor: '#6b728020', fill: true, tension: 0.1 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { usePointStyle: true, padding: 15 } }
+        },
+        scales: { y: { beginAtZero: false } }
+      }
+    });
+
+    createChart('chart-draft', 'Draft Tokens', datasets['Draft Tokens'] || [], '#ec4899');
+    createChart('chart-cards', 'Total Cards', datasets['Total Cards'] || [], '#14b8a6');
+
+  } catch (err) {
+    console.error('Failed to load metrics:', err);
+  }
+}
+
+loadMetrics();
+
+window.addEventListener('popstate', loadMetrics);
+</script>
+{% endblock %}

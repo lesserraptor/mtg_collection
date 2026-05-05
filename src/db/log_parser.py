@@ -203,3 +203,60 @@ def parse_log_decks(log_path: Path) -> list[dict]:
 
     # Fallback: scan DeckUpsertDeckV2 events
     return _parse_upsert_events(lines)
+
+
+def _parse_wallet_from_starthook(data: dict) -> dict | None:
+    """Extract wallet/currency data from StartHook JSON payload.
+
+    Returns dict with keys: gems, gold, mythic_wc, rare_wc, uncommon_wc,
+    common_wc, draft_tokens, or None if not present.
+    """
+    inv = data.get("InventoryInfo")
+    if not inv:
+        return None
+
+    result = {
+        "gems": inv.get("Gems", 0),
+        "gold": inv.get("Gold", 0),
+        "mythic_wc": inv.get("WildCardMythics", 0),
+        "rare_wc": inv.get("WildCardRares", 0),
+        "uncommon_wc": inv.get("WildCardUnCommons", 0),
+        "common_wc": inv.get("WildCardCommons", 0),
+        "draft_tokens": 0,
+    }
+
+    tokens = inv.get("CustomTokens", {})
+    if "DraftToken" in tokens:
+        result["draft_tokens"] = tokens["DraftToken"]
+
+    return result
+
+
+def parse_log_wallet(log_path: Path) -> dict | None:
+    """Parse Player.log and return wallet/currency data from StartHook.
+
+    Args:
+        log_path: Path to Player.log
+
+    Returns:
+        Dict with keys: gems, gold, mythic_wc, rare_wc, uncommon_wc,
+        common_wc, draft_tokens, or None if not found.
+    """
+    with open(log_path, encoding="utf-8", errors="replace") as f:
+        lines = f.readlines()
+
+    for line in reversed(lines):
+        stripped = line.strip()
+        if not stripped.startswith("{"):
+            continue
+        if '"InventoryInfo"' not in stripped:
+            continue
+        try:
+            data = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        wallet = _parse_wallet_from_starthook(data)
+        if wallet:
+            return wallet
+
+    return None
