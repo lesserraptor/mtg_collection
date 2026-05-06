@@ -89,7 +89,7 @@ function createChart(canvasId, label, data, color) {
         legend: { display: false }
       },
       scales: {
-        y: { beginAtZero: false }
+        y: { beginAtZero: false, ticks: { callback: (value) => Number.isInteger(value) ? value : null } }
       }
     }
   });
@@ -147,7 +147,7 @@ async function loadMetrics() {
         plugins: {
           legend: { position: 'bottom', labels: { usePointStyle: true, padding: 15 } }
         },
-        scales: { y: { beginAtZero: false } }
+        scales: { y: { beginAtZero: false, ticks: { callback: (value) => Number.isInteger(value) ? value : null } } }
       }
     });
 

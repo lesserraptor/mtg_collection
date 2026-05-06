@@ -56,3 +56,7 @@ Each metric has its own graph:
 - `src/web/templates/base.html` - Added Resources tab to nav
 - `src/web/templates/metrics.html` - New template with Chart.js
 - `src/web/static/app.css` - Added metrics page styling
+
+## Bug Fixes
+- **Vertical scrollbars** - Changed `.metrics-page` to `flex: 1; overflow-y: auto` so the page itself scrolls within the existing `.main` flex container
+- **Decimals in Total Cards** - Added `ticks: { callback: (value) => Number.isInteger(value) ? value : null }` to all chart scale configs to show only integers on Y-axis
