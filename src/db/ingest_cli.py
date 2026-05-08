@@ -16,7 +16,7 @@ Arguments:
     --db PATH              Override DB path (default: ~/mtga_collection.db)
     --scryfall-cache PATH  Where to store/reuse downloaded Scryfall JSON
                            (default: ~/.cache/mtga/scryfall_all_cards.json)
-    --collection PATH      Untapped collection JSON path (default: auto-detect)
+    --collection PATH      Collection JSON path (default: auto-detect)
     --skip-download        Skip Scryfall download; use existing cache file
     --skip-collection      Skip collection upsert step
     --skip-mtga-card-db    Skip native CardDB step (e.g. MTGA not installed)
@@ -69,7 +69,7 @@ def main() -> None:
         type=Path,
         default=None,
         metavar="PATH",
-        help="Untapped collection JSON path (default: auto-detect)",
+        help="Collection JSON path (default: auto-detect)",
     )
     parser.add_argument(
         "--skip-download",

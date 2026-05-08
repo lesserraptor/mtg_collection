@@ -230,7 +230,7 @@ async def refresh_collection(request: Request):
         try:
             collection_path = find_collection_file(db=db)
             if collection_path is None:
-                await queue.put(json.dumps({"stage": "done", "pct": 0, "status": "collection_err_no_file", "message": "Collection file not found. Is Untapped running?"}))
+                await queue.put(json.dumps({"stage": "done", "pct": 0, "status": "collection_err_no_file", "message": "Collection file not found."}))
                 return
             await asyncio.get_event_loop().run_in_executor(
                 None, lambda: upsert_collection(db, collection_path, progress_callback=_progress)

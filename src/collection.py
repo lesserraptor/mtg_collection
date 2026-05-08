@@ -95,7 +95,7 @@ def upsert_collection(conn: sqlite3.Connection, path: Path, progress_callback=No
     # 1. Snapshot current state before reload
     old_snap = _snapshot_collection(conn)
 
-    # 2. Read source file — JSON (Untapped x.json) or SQLite (legacy mtga_collection.db)
+    # 2. Read source file — JSON (x.json) or SQLite (legacy mtga_collection.db)
     now = datetime.now(timezone.utc).isoformat()
     if path.suffix.lower() == ".json":
         with open(path, encoding="utf-8") as f:

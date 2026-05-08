@@ -24,7 +24,7 @@ FastAPI web app (`src/web/app.py`) with SQLite backend (`data/mtga_collection.db
 | `src/db/ingest_cli.py` | Full data pipeline CLI (CardDB → Scryfall → Collection → Errata) |
 | `src/db/ingest.py` | Scryfall bulk download + enrichment |
 | `src/db/mtga_card_db.py` | Native MTGA CardDatabase (.mtga SQLite) parser |
-| `src/collection.py` | Untapped.gg collection JSON parsing |
+| `src/collection.py` | Collection JSON parsing |
 | `src/draft/` | Draft log scanner + 17Lands integration |
 | `src/watcher.py` | File watcher for live collection updates |
 | `src/config.py` | `PROJECT_ROOT` and `DATA_DIR` (`data/`) |
@@ -33,7 +33,7 @@ FastAPI web app (`src/web/app.py`) with SQLite backend (`data/mtga_collection.db
 
 1. **Native CardDB** — reads `Raw_CardDatabase_*.mtga` from Steam/Proton install
 2. **Scryfall enrichment** — downloads ~2GB bulk JSON, enriches with images/metadata
-3. **Collection upsert** — reads Untapped.gg collection JSON (auto-detected from Proton path)
+3. **Collection upsert** — reads collection JSON (auto-detected from Proton path)
 4. **Errata** — applies manual corrections from `src/db/errata.py`
 
 ## Commands

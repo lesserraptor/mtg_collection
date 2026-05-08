@@ -44,7 +44,7 @@ Open `http://localhost:8000` in your browser.
 | `src/web/` | FastAPI app and routes |
 | `src/db/` | SQLite schema and data ingestion |
 | `src/draft/` | Draft log scanning and 17Lands integration |
-| `src/collection.py` | Untapped.gg JSON parsing |
+| `src/collection.py` | Collection JSON parsing |
 | `data/` | SQLite database and Scryfall cache (gitignored) |
 
 ## Tech Stack
