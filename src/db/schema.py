@@ -184,6 +184,12 @@ def create_schema(conn: sqlite3.Connection) -> None:
             draft_tokens  INTEGER NOT NULL DEFAULT 0,
             total_cards   INTEGER NOT NULL DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS mastery_pass_purchases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            purchase_date TEXT NOT NULL,
+            gems_at_purchase INTEGER NOT NULL
+        );
     """)
 
 

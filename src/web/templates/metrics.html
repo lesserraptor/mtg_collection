@@ -2,6 +2,32 @@
 
 {% block title %}Resource Metrics - MTG Collection{% endblock %}
 
+{% block sidebar %}
+<div class="sidebar-section">
+  <div class="sidebar-label">Record Mastery Pass</div>
+  <form method="post" action="/metrics/mastery" style="display:flex; flex-direction:column; gap:0.5rem;">
+    <input type="date" name="purchase_date" required style="padding:0.4rem; border-radius:4px; border:1px solid #444; background:#222; color:#fff;">
+    <input type="number" name="gems_at_purchase" placeholder="Gems balance after purchase" required style="padding:0.4rem; border-radius:4px; border:1px solid #444; background:#222; color:#fff;">
+    <button type="submit" style="padding:0.4rem; border-radius:4px; background:#22c55e; color:#fff; border:none; cursor:pointer;">Add Purchase</button>
+  </form>
+</div>
+
+{% if mastery_purchases %}
+<div class="sidebar-section" style="margin-top:1rem;">
+  <div class="sidebar-label">Recent Purchases</div>
+  {% for p in mastery_purchases %}
+  <div style="font-size:0.85em; color:#aaa; padding:0.25rem 0; display:flex; justify-content:space-between; align-items:center;">
+    <span>{{ p.purchase_date }} — {{ p.gems_at_purchase }} gems</span>
+    <form method="post" action="/metrics/mastery/delete" style="display:inline;">
+      <input type="hidden" name="id" value="{{ p.id }}">
+      <button type="submit" style="background:none; border:none; color:#e74c3c; cursor:pointer; padding:0 0.25rem; font-size:0.8em;">✕</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="metrics-page">
   <div class="page-header">
@@ -119,7 +145,26 @@ async function loadMetrics() {
       datasets[ds.label] = ds.data;
     }
 
-    createChart('chart-gems', 'Gems', datasets['Gems'] || [], '#a855f7');
+    const gemsCtx = document.getElementById('chart-gems').getContext('2d');
+    if (charts['chart-gems']) charts['chart-gems'].destroy();
+    const gemsDatasets = [{ label: 'Gems', data: datasets['Gems'] || [], borderColor: '#a855f7', backgroundColor: 'rgba(168,85,247,0.1)', fill: true, tension: 0.1 }];
+    const baseline = datasets['Mastery Purchase Baseline'] ? datasets['Mastery Purchase Baseline'][0] : null;
+    if (baseline) {
+      gemsDatasets.push({ label: 'Mastery Purchase', data: datasets['Mastery Purchase Baseline'], borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0)', borderDash: [5, 5], fill: false, pointRadius: 3, tension: 0, borderWidth: 2 });
+      gemsDatasets.push({ label: 'Gems Recovered', data: datasets['Gems Recovered'] || [], borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0)', borderDash: [2, 2], fill: false, pointRadius: 3, tension: 0, borderWidth: 2 });
+    }
+    const yMin = baseline ? baseline - 500 : null;
+    charts['chart-gems'] = new Chart(gemsCtx, {
+      type: 'line',
+      data: { labels: window.metricLabels, datasets: gemsDatasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: true, position: 'bottom', labels: { usePointStyle: true, padding: 15 } } },
+        scales: { y: yMin ? { min: yMin } : {} }
+      }
+    });
+
     createChart('chart-gold', 'Gold', datasets['Gold'] || [], '#eab308');
 
     const wildcards = [

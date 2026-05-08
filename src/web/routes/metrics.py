@@ -3,7 +3,8 @@
 from datetime import date, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Form, Query, Request, status
+from fastapi.responses import RedirectResponse
 
 router = APIRouter()
 
@@ -61,9 +62,14 @@ async def metrics_view(request: Request, range: str = "90"):
     db = request.app.state.db
     templates = request.app.state.templates
 
+    purchases = db.execute(
+        "SELECT id, purchase_date, gems_at_purchase FROM mastery_pass_purchases ORDER BY purchase_date DESC LIMIT 5"
+    ).fetchall()
+
     return templates.TemplateResponse(request, "metrics.html", {
         "mode": "metrics",
         "range": range,
+        "mastery_purchases": [dict(r) for r in purchases],
     })
 
 
@@ -96,6 +102,11 @@ async def metrics_data(request: Request, range: str = "90"):
 
     labels = [row["date"] for row in filled]
 
+    baseline_row = db.execute(
+        "SELECT gems_at_purchase FROM mastery_pass_purchases ORDER BY purchase_date DESC LIMIT 1"
+    ).fetchone()
+    baseline = baseline_row["gems_at_purchase"] if baseline_row else None
+
     datasets = [
         {"label": "Gems", "data": [row["gems"] for row in filled], "borderColor": "#a855f7", "backgroundColor": "rgba(168,85,247,0.1)"},
         {"label": "Gold", "data": [row["gold"] for row in filled], "borderColor": "#eab308", "backgroundColor": "rgba(234,179,8,0.1)"},
@@ -107,7 +118,40 @@ async def metrics_data(request: Request, range: str = "90"):
         {"label": "Total Cards", "data": [row["total_cards"] for row in filled], "borderColor": "#14b8a6", "backgroundColor": "rgba(20,184,166,0.1)"},
     ]
 
+    if baseline is not None:
+        datasets.append(
+            {"label": "Mastery Purchase Baseline", "data": [baseline] * len(filled), "borderColor": "#22c55e", "backgroundColor": "rgba(34,197,94,0)", "borderDash": [5, 5], "fill": False, "pointRadius": 3, "tension": 0, "borderWidth": 2}
+        )
+        datasets.append(
+            {"label": "Gems Recovered", "data": [baseline + 3400] * len(filled), "borderColor": "#f59e0b", "backgroundColor": "rgba(245,158,11,0)", "borderDash": [2, 2], "fill": False, "pointRadius": 3, "tension": 0, "borderWidth": 2}
+        )
+
     return {
         "labels": labels,
         "datasets": datasets,
     }
+
+
+@router.post("/metrics/mastery")
+async def add_mastery_purchase(
+    request: Request,
+    purchase_date: str = Form(...),
+    gems_at_purchase: int = Form(...),
+):
+    """Record a new mastery pass purchase."""
+    db = request.app.state.db
+    db.execute(
+        "INSERT INTO mastery_pass_purchases (purchase_date, gems_at_purchase) VALUES (?, ?)",
+        (purchase_date, gems_at_purchase),
+    )
+    db.commit()
+    return RedirectResponse(url="/metrics", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/metrics/mastery/delete")
+async def delete_mastery_purchase(request: Request, id: int = Form(...)):
+    """Delete a mastery pass purchase."""
+    db = request.app.state.db
+    db.execute("DELETE FROM mastery_pass_purchases WHERE id = ?", (id,))
+    db.commit()
+    return RedirectResponse(url="/metrics", status_code=status.HTTP_302_FOUND)
