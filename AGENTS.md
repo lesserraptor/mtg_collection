@@ -52,6 +52,5 @@ FastAPI web app (`src/web/app.py`) with SQLite backend (`data/mtga_collection.db
 - **`data/` is gitignored** — contains the SQLite DB and Scryfall cache. Never commit anything from `data/`.
 - **Python 3.13+** — code uses modern syntax (`Path | None`, walrus operator, etc.)
 - **No test suite** — the repo has no tests or linting config
-- **`mtga_collection.py`** in root is a legacy standalone script; the current pipeline is `src/db/ingest_cli.py`
 - **Draft scanner** is NOT started automatically — use the "Start Listening" button on `/draft` in the web UI
 - The DB uses WAL mode with mmap for performance; connection is shared across routes with `check_same_thread=False`
