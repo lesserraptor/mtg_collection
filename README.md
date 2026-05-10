@@ -44,6 +44,30 @@ python -m uvicorn src.web.app:app --host 0.0.0.0 --port 8000
 
 Open `http://localhost:8000` in your browser.
 
+### Import Your Data
+
+Before the app is useful, you need to import your data. Two options:
+
+**Option 1: Command Line**
+
+```bash
+# Full import (requires MTGA installed)
+python src/db/ingest_cli.py
+
+# Skip MTGA CardDB (if MTGA not installed)
+python src/db/ingest_cli.py --skip-mtga-card-db
+
+# Use cached Scryfall data (faster on subsequent runs)
+python src/db/ingest_cli.py --skip-download
+
+# Skip collection load entirely (only refresh card data)
+python src/db/ingest_cli.py --skip-collection
+```
+
+**Option 2: In-App**
+
+Start the server, go to **Settings** (`http://localhost:8000/settings`), and run the refresh steps in order.
+
 ## Project Structure
 
 | Path | Purpose |
