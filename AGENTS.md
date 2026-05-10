@@ -54,3 +54,10 @@ FastAPI web app (`src/web/app.py`) with SQLite backend (`data/mtga_collection.db
 - **No test suite** — the repo has no tests or linting config
 - **Draft scanner** is NOT started automatically — use the "Start Listening" button on `/draft` in the web UI
 - The DB uses WAL mode with mmap for performance; connection is shared across routes with `check_same_thread=False`
+
+## Safety rules
+
+1. **Never delete or overwrite project data files** — Never run `rm`, `git reset --hard`, or overwrite files in `data/` without explicit user consent.
+2. **Use `/tmp` for testing** — When testing DB operations, create temp DBs in `/tmp/opencode/` instead of `data/`.
+3. **Confirm destructive commands** — Before any command that modifies or deletes existing project files, ask "Are you sure?" and wait for confirmation.
+4. **Ask before destructive operations** — If a task requires deleting files, resetting the DB, or making irreversible changes, explicitly ask the user first.

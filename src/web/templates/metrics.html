@@ -77,6 +77,13 @@
         <canvas id="chart-cards"></canvas>
       </div>
     </div>
+
+    <div class="chart-card" style="grid-column: span 2;">
+      <h3>Draft ROI (Winnings / Entry Cost)</h3>
+      <div class="chart-container" style="height: 300px;">
+        <canvas id="chart-draft-roi"></canvas>
+      </div>
+    </div>
   </div>
 
   <div id="no-data-message" class="no-data" style="display:none;">
@@ -198,6 +205,89 @@ async function loadMetrics() {
 
     createChart('chart-draft', 'Draft Tokens', datasets['Draft Tokens'] || [], '#ec4899');
     createChart('chart-cards', 'Total Cards', datasets['Total Cards'] || [], '#14b8a6');
+
+    // Load Draft ROI chart
+    try {
+      const draftResp = await fetch('/metrics/draft-data');
+      const draftData = await draftResp.json();
+
+      if (draftData.labels && draftData.labels.length > 0) {
+        const roiCtx = document.getElementById('chart-draft-roi').getContext('2d');
+        if (charts['chart-draft-roi']) charts['chart-draft-roi'].destroy();
+
+        const datasets = [
+          {
+            label: 'ROI',
+            data: draftData.points.map((y, x) => ({x, y})),
+            backgroundColor: 'rgba(59, 130, 246, 0.5)',
+            borderColor: 'rgba(59, 130, 246, 0.5)',
+            showLine: false,
+            pointRadius: 4,
+          },
+          {
+            label: 'Break Even',
+            data: draftData.points.map((_, i) => ({x: i, y: 0.1})),
+            borderColor: '#ef4444',
+            borderDash: [5, 5],
+            borderWidth: 2,
+            pointRadius: 0,
+            fill: false,
+            order: 1,
+          },
+        ];
+
+        if (draftData.avg10.some(v => v !== null)) {
+          datasets.push({
+            label: '10-match avg',
+            data: draftData.avg10.map((y, x) => ({x, y})),
+            borderColor: '#22c55e',
+            backgroundColor: 'transparent',
+            tension: 0.3,
+            pointRadius: 0,
+          });
+        }
+        if (draftData.avg30.some(v => v !== null)) {
+          datasets.push({
+            label: '30-match avg',
+            data: draftData.avg30.map((y, x) => ({x, y})),
+            borderColor: '#f59e0b',
+            backgroundColor: 'transparent',
+            tension: 0.3,
+            pointRadius: 0,
+          });
+        }
+        if (draftData.avg50.some(v => v !== null)) {
+          datasets.push({
+            label: '50-match avg',
+            data: draftData.avg50.map((y, x) => ({x, y})),
+            borderColor: '#ec4899',
+            backgroundColor: 'transparent',
+            tension: 0.3,
+            pointRadius: 0,
+          });
+        }
+
+        charts['chart-draft-roi'] = new Chart(roiCtx, {
+          type: 'line',
+          data: { labels: draftData.labels, datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'bottom', labels: { usePointStyle: true, padding: 15 } },
+            },
+            scales: {
+              y: {
+                title: { display: true, text: 'Winnings / Cost' },
+                min: 0,
+              },
+            },
+          },
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load draft ROI:', err);
+    }
 
   } catch (err) {
     console.error('Failed to load metrics:', err);

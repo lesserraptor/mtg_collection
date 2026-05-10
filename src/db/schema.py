@@ -190,6 +190,18 @@ def create_schema(conn: sqlite3.Connection) -> None:
             purchase_date TEXT NOT NULL,
             gems_at_purchase INTEGER NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS draft_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            set_code TEXT NOT NULL,
+            format TEXT NOT NULL,
+            wins INTEGER NOT NULL,
+            losses INTEGER NOT NULL,
+            cost_gold INTEGER NOT NULL,
+            winnings_gems INTEGER NOT NULL,
+            trophy INTEGER NOT NULL DEFAULT 0
+        );
     """)
 
 
@@ -213,6 +225,7 @@ def create_indexes(conn: sqlite3.Connection) -> None:
             ON collection_snapshot_diffs(snapshot_id);
         CREATE INDEX IF NOT EXISTS idx_snapshots_snapshot_at
             ON collection_snapshots(snapshot_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_draft_results_date ON draft_results(date);
     """)
     conn.commit()
 

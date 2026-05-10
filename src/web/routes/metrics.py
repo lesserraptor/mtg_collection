@@ -155,3 +155,37 @@ async def delete_mastery_purchase(request: Request, id: int = Form(...)):
     db.execute("DELETE FROM mastery_pass_purchases WHERE id = ?", (id,))
     db.commit()
     return RedirectResponse(url="/metrics", status_code=status.HTTP_302_FOUND)
+
+
+def _rolling_average(values: list[float], window: int) -> list[float | None]:
+    """Calculate rolling average with None for insufficient data points."""
+    result = []
+    for i, v in enumerate(values):
+        if i < window - 1:
+            result.append(None)
+        else:
+            avg = sum(values[i - window + 1 : i + 1]) / window
+            result.append(avg)
+    return result
+
+
+@router.get("/metrics/draft-data")
+async def draft_roi_data(request: Request):
+    """Return draft ROI data as JSON for Chart.js."""
+    db = request.app.state.db
+    rows = db.execute("""
+        SELECT date, cost_gold, winnings_gems
+        FROM draft_results ORDER BY date
+    """).fetchall()
+
+    if not rows:
+        return {"labels": [], "points": [], "avg10": [], "avg30": [], "avg50": []}
+
+    labels = [r["date"] for r in rows]
+    ratios = [r["winnings_gems"] / r["cost_gold"] if r["cost_gold"] > 0 else 0 for r in rows]
+
+    avg10 = _rolling_average(ratios, 10)
+    avg30 = _rolling_average(ratios, 30)
+    avg50 = _rolling_average(ratios, 50)
+
+    return {"labels": labels, "points": ratios, "avg10": avg10, "avg30": avg30, "avg50": avg50}

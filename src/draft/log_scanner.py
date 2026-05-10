@@ -73,6 +73,13 @@ _DRAFT_FORMAT_MAP = {
     "TradSealed": "TradSealed",
 }
 
+REWARD_LOOKUP = {
+    "PickTwoDraft": {0: 50, 1: 150, 2: 800, 3: 1000, 4: 1300},
+    "QuickDraft": {0: 50, 1: 100, 2: 200, 3: 300, 4: 450, 5: 650, 6: 850, 7: 950},
+    "PremierDraft": {0: 50, 1: 100, 2: 250, 3: 1000, 4: 1400, 5: 1600, 6: 1800, 7: 2200},
+    "TradDraft": {0: 200, 1: 500, 2: 1200, 3: 1800, 4: 2200},
+}
+
 
 def _strip_alchemy_prefix(code: str) -> str:
     """Remove known Alchemy prefixes (Y25, Y, A) from set code."""
@@ -85,7 +92,14 @@ def _strip_alchemy_prefix(code: str) -> str:
     return code.upper()
 
 
-def _process_line(line: str, state: DraftState) -> bool:
+# Prize claim event prefix
+PRIZE_CLAIM_PREFIX = "[UnityCrossThreadLogger]==> EventClaimPrize "
+
+# Match event prefix for tracking wins
+MATCH_STATE_PREFIX = "[UnityCrossThreadLogger]==> matchGameRoomStateChangedEvent "
+
+
+def _process_line(line: str, state: DraftState, app=None) -> bool:
     """Parse a single log line and update state in-place.
 
     Returns True if state changed (i.e., a draft event was detected).
@@ -139,6 +153,14 @@ def _process_line(line: str, state: DraftState) -> bool:
                     state.ratings = {}
                     state.pack_num = 0
                     state.pick_num = 0
+                    state.entry_cost_gold = 0
+                    state.wins = 0
+                    entry_currency = payload_obj.get("EntryCurrencyPaid") or payload_obj.get("EntryCurrency")
+                    if entry_currency:
+                        for curr in entry_currency if isinstance(entry_currency, list) else [entry_currency]:
+                            if curr.get("CurrencyType") == "Gold":
+                                state.entry_cost_gold = int(curr.get("Quantity", 0))
+                                break
                     changed = True
                     logger.debug(
                         "log_scanner: draft started — set=%s format=%s",
@@ -429,6 +451,63 @@ def _process_line(line: str, state: DraftState) -> bool:
             logger.debug("log_scanner: failed to parse DraftCompleteDraft line", exc_info=False)
         return changed
 
+    # ------------------------------------------------------------------
+    # Prize claim — insert draft result to DB
+    # ------------------------------------------------------------------
+    idx = line.find(PRIZE_CLAIM_PREFIX)
+    if idx != -1:
+        try:
+            outer = json.loads(line[idx + len(PRIZE_CLAIM_PREFIX):])
+            request_str = outer.get("request", "{}")
+            request = json.loads(request_str) if isinstance(request_str, str) else request_str
+            payload_str = request.get("Payload", "{}")
+            payload = json.loads(payload_str) if isinstance(payload_str, str) else payload_str
+            current_wins = payload.get("CurrentWins", 0)
+            state.wins = int(current_wins)
+            format_name = state.format or "PremierDraft"
+            winnings_gems = REWARD_LOOKUP.get(format_name, {}).get(state.wins, 0)
+            trophy = 1 if (format_name == "PickTwoDraft" and state.wins >= 4) or (format_name != "PickTwoDraft" and state.wins >= 7) else 0
+            if app and hasattr(app.state, "db") and state.set_code and state.entry_cost_gold > 0:
+                from datetime import date
+                today = date.today().isoformat()
+                app.state.db.execute(
+                    """
+                    INSERT INTO draft_results (date, set_code, format, wins, losses, cost_gold, winnings_gems, trophy)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (today, state.set_code, format_name, state.wins, 0, state.entry_cost_gold, winnings_gems, trophy),
+                )
+                app.state.db.commit()
+                logger.info(
+                    "log_scanner: draft result recorded — set=%s wins=%d gems=%d trophy=%d",
+                    state.set_code, state.wins, winnings_gems, trophy,
+                )
+            changed = True
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+            logger.debug("log_scanner: failed to parse prize claim line", exc_info=False)
+        return changed
+
+    # ------------------------------------------------------------------
+    # Match events — track wins during draft matches
+    # ------------------------------------------------------------------
+    idx = line.find(MATCH_STATE_PREFIX)
+    if idx != -1:
+        try:
+            outer = json.loads(line[idx + len(MATCH_STATE_PREFIX):])
+            request_str = outer.get("request", "{}")
+            request = json.loads(request_str) if isinstance(request_str, str) else request_str
+            payload_str = request.get("Payload", "{}")
+            payload = json.loads(payload_str) if isinstance(payload_str, str) else payload_str
+            game_state = payload.get("gameState", {})
+            if game_state:
+                winning_team = game_state.get("winningTeamId")
+                if winning_team is not None and winning_team > 0:
+                    state.wins += 1
+                    changed = True
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+            pass
+        return changed
+
     return changed
 
 
@@ -600,7 +679,7 @@ async def log_consumer(app, queue: asyncio.Queue, state: DraftState) -> None:
             prev_phase = state.phase
             changed = False
             for line in new_lines:
-                changed |= _process_line(line, state)
+                changed |= _process_line(line, state, app)
             # Fetch 17lands ratings whenever we're in a draft and have no ratings yet.
             # state.ratings is cleared on each new draft start, so this correctly
             # re-fetches when switching formats without restarting the scanner.
