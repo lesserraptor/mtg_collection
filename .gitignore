@@ -1,4 +1,15 @@
 *.swp
 data/
-.venv/
 migrations/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+ENV/
+.env/
+.venv/
