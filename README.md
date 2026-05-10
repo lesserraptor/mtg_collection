@@ -11,6 +11,13 @@ A local web interface for browsing and analyzing your Magic: The Gathering Arena
 - **Live Updates** — Watches your collection file and auto-refreshes when Arena updates your collection.
 - **Set Browser** — Browse cards by set, see release dates and total card counts.
 
+### What this does that Arena does not
+- The collection browser is less clunky to navigate and can show more cards at a time.
+- You can copy decks off the internet and add them here to see what cards you are missing (and you can use the analysis tab to find out which missing cards are viable in more than 1 deck)
+- You can see the changes to your collection over time.
+- You can track your resource usage (gold, gems, wildcards, draft tokens, collection size)
+- You can see the 17lands rankings of cards during a draft. There are better overlay programs out there, but this works even if overlays don't. You can also look at the draft cards in the context of your collection (ie, if a card is on a wishlist for a deck, you'll see that)
+
 ## Data Source
 
 **This app does not extract your collection directly from MTGA.** It cannot read your account's collection from Arena's servers. You must supply your collection data manually.

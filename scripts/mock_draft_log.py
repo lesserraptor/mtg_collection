@@ -3,17 +3,18 @@
 Emits realistic draft log lines covering all supported MTGA draft formats.
 
 Usage:
-    .venv/bin/python scripts/mock_draft_log.py [set_code] [--format quick|premier|traditional|autopick]
+    .venv/bin/python scripts/mock_draft_log.py [set_code] [--format quick|premier|traditional|autopick|picktwo]
 
     e.g.  .venv/bin/python scripts/mock_draft_log.py fin
           .venv/bin/python scripts/mock_draft_log.py mkm --format premier
-          .venv/bin/python scripts/mock_draft_log.py fin --format autopick
+          .venv/bin/python scripts/mock_draft_log.py fin --format picktwo
 
 Formats:
   quick        — Quick Draft / BotDraft (default): Shape C packs + BotDraft_DraftPick lines
   premier      — Premier Draft: Event_Join start + Shape A P1P1 + Shape B subsequent + V2 pick
   traditional  — Traditional Draft: Event_Join start + Shape A P1P1 + Shape B subsequent + V1 pick
   autopick     — Auto-pick simulation: Event_Join start + Shape D (LogBusinessEvents) combined lines
+  picktwo      — Pick Two Draft: EventJoin start + Shape B packs + GrpIds array picks (2 per pack)
 
 This exercises the full pipeline:
   log file → watchdog → log_consumer → DraftState → render_pack_html → SSE → browser
@@ -35,7 +36,7 @@ parser.add_argument("set_code", nargs="?", default="fin", help="Set code (e.g. f
 parser.add_argument(
     "--format",
     dest="fmt",
-    choices=["quick", "premier", "traditional", "autopick"],
+    choices=["quick", "premier", "traditional", "autopick", "picktwo"],
     default="quick",
     help="Draft format to simulate (default: quick)",
 )
@@ -167,6 +168,31 @@ def emit_shape_d(pack_cards: list[int], picked_id: int, event_name: str, pack_nu
 
 
 # ---------------------------------------------------------------------------
+# Pick Two Draft emit functions
+# ---------------------------------------------------------------------------
+
+def emit_picktwo_start(event_name: str):
+    """Emit EventJoin start line for Pick Two Draft."""
+    request = json.dumps({"EventName": event_name, "EntryCurrencyType": "Gold", "EntryCurrencyPaid": 6000})
+    outer = json.dumps({"request": request})
+    write(f"[UnityCrossThreadLogger]==> EventJoin {outer}")
+
+
+def emit_picktwo_picks(ids: list[int], pack: int, pick: int):
+    """Emit EventPlayerDraftMakePick with GrpIds array for Pick Two (two cards per pick)."""
+    request = json.dumps({"DraftId": "mock-draft-id", "GrpIds": ids, "Pack": pack, "Pick": pick})
+    outer = json.dumps({"request": request})
+    write(f"[UnityCrossThreadLogger]==> EventPlayerDraftMakePick {outer}")
+
+
+def emit_picktwo_complete(event_name: str):
+    """Emit DraftCompleteDraft completion line for Pick Two Draft."""
+    request = json.dumps({"EventName": event_name, "IsBotDraft": False})
+    outer = json.dumps({"request": request})
+    write(f"[UnityCrossThreadLogger]==> DraftCompleteDraft {outer}")
+
+
+# ---------------------------------------------------------------------------
 # Main dispatcher
 # ---------------------------------------------------------------------------
 
@@ -186,8 +212,10 @@ def main():
         event_name = f"Draft_{SET_CODE.upper()}_{today}"
     elif fmt == "traditional":
         event_name = f"Trad_Draft_{SET_CODE.upper()}_{today}"
-    else:  # autopick
+    elif fmt == "autopick":
         event_name = f"Draft_{SET_CODE.upper()}_{today}"
+    elif fmt == "picktwo":
+        event_name = f"PickTwoDraft_{SET_CODE.upper()}_{today}"
 
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     LOG_PATH.touch()
@@ -205,6 +233,8 @@ def main():
         write(f"[UnityCrossThreadLogger]==> BotDraft_DraftStatus {outer}")
     elif fmt in ("premier", "traditional", "autopick"):
         emit_premier_start(event_name)
+    elif fmt == "picktwo":
+        emit_picktwo_start(event_name)
 
     pack_idx = 0
     pick_num = 0
@@ -215,11 +245,18 @@ def main():
     elif fmt in ("premier", "traditional"):
         emit_shape_a(pack_states[0], pack_num=0, pick_num=0)
     elif fmt == "autopick":
-        # autopick: emit first shape D immediately (auto-picks first card)
         pass  # handled in loop
+    elif fmt == "picktwo":
+        emit_shape_b(pack_states[0], pack_num=0, pick_num=0)
+        print(f"  pack 1 pick 1 → {len(pack_states[0])} cards offered (Shape B)")
 
     total_picks = sum(len(p) for p in packs)
     picks_made = 0
+    picktwo_picks_per_pack = 7  # 14 cards per pack, 2 picked per pick
+
+    if fmt == "picktwo":
+        total_picks = picktwo_picks_per_pack * 3
+
     print(f"\n{total_picks} picks total. Press Enter to pick + see next pack (Ctrl+C to quit).\n")
 
     while True:
@@ -230,23 +267,42 @@ def main():
             break
 
         current_pack = pack_states[pack_idx]
-        picked = current_pack.pop(0)
-        picks_made += 1
-        pick_num += 1
 
-        if fmt == "quick":
-            emit_pick(picked)
-        elif fmt == "premier":
-            emit_pick_v2(picked)
-        elif fmt == "traditional":
-            emit_pick_v1(picked)
-        # autopick: pick is embedded in shape D — no separate pick line
+        if fmt == "picktwo":
+            # Pick Two: pop two cards at once
+            if len(current_pack) < 2:
+                pack_idx += 1
+                pick_num = 0
+                if pack_idx >= len(packs):
+                    emit_picktwo_complete(event_name)
+                    print("Draft complete.")
+                    break
+                current_pack = pack_states[pack_idx]
+            picked_a = current_pack.pop(0)
+            picked_b = current_pack.pop(0)
+            picks_made += 1
+            pick_num += 1
+            emit_picktwo_picks([picked_a, picked_b], pack=pack_idx, pick=pick_num)
+            print(f"  P{pack_idx + 1} P{pick_num}: picked {picked_a}, {picked_b}")
+        else:
+            picked = current_pack.pop(0)
+            picks_made += 1
+            pick_num += 1
+
+            if fmt == "quick":
+                emit_pick(picked)
+            elif fmt == "premier":
+                emit_pick_v2(picked)
+            elif fmt == "traditional":
+                emit_pick_v1(picked)
+            # autopick: pick is embedded in shape D — no separate pick line
 
         if not current_pack:
             pack_idx += 1
             pick_num = 0
             if pack_idx >= len(packs):
-                print("Draft complete.")
+                if fmt != "picktwo":
+                    print("Draft complete.")
                 break
 
         # Emit next pack
@@ -261,6 +317,9 @@ def main():
             next_pack = pack_states[pack_idx]
             next_picked = next_pack[0]  # preview — actual pop happens next loop
             emit_shape_d(list(next_pack), next_picked, event_name, pack_idx, pick_num)
+        elif fmt == "picktwo":
+            emit_shape_b(pack_states[pack_idx], pack_num=pack_idx, pick_num=pick_num)
+            print(f"  pack {pack_idx + 1} pick 1 → {len(pack_states[pack_idx])} cards offered")
 
 
 if __name__ == "__main__":

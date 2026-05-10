@@ -19,7 +19,7 @@ from src.draft.log_scanner import render_pack_html, start_draft_scanner, METRICS
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-ALLOWED_FORMATS = ("PremierDraft", "QuickDraft", "TradDraft")
+ALLOWED_FORMATS = ("PremierDraft", "QuickDraft", "TradDraft", "PickTwoDraft")
 
 _MAJOR_SET_TYPES = {"expansion", "core", "masters", "draft_innovation"}
 
@@ -158,7 +158,6 @@ async def scan_start(request: Request):
         )
     from src.draft.state import DraftState
     state = DraftState()
-    state.file_offset = log_path.stat().st_size
     request.app.state.draft_state = state
     await start_draft_scanner(request.app, log_path, request.app.state.draft_state)
     request.app.state.draft_scanning = True

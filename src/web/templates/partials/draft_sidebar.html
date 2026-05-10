@@ -62,13 +62,14 @@
     <div class="sidebar-label">Format</div>
     <div style="display:flex; flex-direction:column; gap:0.3rem;">
       {% for fmt_key in ALLOWED_FORMATS %}
+      {% set fmt_label = {'PremierDraft': 'Premier Draft', 'QuickDraft': 'Quick Draft', 'TradDraft': 'Traditional Draft', 'PickTwoDraft': 'Pick Two Draft'}[fmt_key] %}
       <button type="button"
         hx-post="/draft/format/set"
         hx-vals='{"format": "{{ fmt_key }}"}'
         hx-target="#draft-sidebar"
         hx-swap="outerHTML"
         style="text-align:left; padding:0.3rem 0.6rem; border-radius:4px; border:1px solid {% if fmt_key == draft_format %}#7c3aed{% else %}#333{% endif %}; background:{% if fmt_key == draft_format %}#3b1f6e{% else %}transparent{% endif %}; color:{% if fmt_key == draft_format %}#e2e8f0{% else %}#888{% endif %}; cursor:pointer; font-size:0.8rem;">
-        {{ fmt_key }}{% if fmt_key == detected_format %} <span style="color:#666;font-size:0.7rem;">(detected)</span>{% endif %}
+        {{ fmt_label }}{% if fmt_key == detected_format %} <span style="color:#666;font-size:0.7rem;">(detected)</span>{% endif %}
       </button>
       {% endfor %}
     </div>

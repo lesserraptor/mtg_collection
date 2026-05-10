@@ -40,6 +40,7 @@ DEFAULT_METRIC_ORDER = ['gihwr', 'ohwr', 'iwd', 'gwr', 'ata', 'alsa']
 # ---------------------------------------------------------------------------
 DRAFT_START_PREFIXES = [
     "[UnityCrossThreadLogger]==> Event_Join ",
+    "[UnityCrossThreadLogger]==> EventJoin ",
     "[UnityCrossThreadLogger]==> BotDraft_DraftStatus ",
 ]
 
@@ -52,6 +53,7 @@ PACK_NOTIFY_PREFIX = "[UnityCrossThreadLogger]Draft.Notify "
 # Pick event prefixes
 # ---------------------------------------------------------------------------
 PICK_PREFIX_V1 = "[UnityCrossThreadLogger]==> Event_PlayerDraftMakePick "
+PICK_PREFIX_V1B = "[UnityCrossThreadLogger]==> EventPlayerDraftMakePick "
 PICK_PREFIX_V2 = "[UnityCrossThreadLogger]==> Draft.MakeHumanDraftPick "
 PICK_PREFIX_BOT = "[UnityCrossThreadLogger]==> BotDraft_DraftPick "
 
@@ -66,6 +68,7 @@ _DRAFT_FORMAT_MAP = {
     "Draft": "PremierDraft",
     "BotDraft": "QuickDraft",
     "QuickDraft": "QuickDraft",
+    "PickTwoDraft": "PickTwoDraft",
     "Sealed": "Sealed",
     "TradSealed": "TradSealed",
 }
@@ -101,11 +104,10 @@ def _process_line(line: str, state: DraftState) -> bool:
                 request_str = outer.get("request") or outer.get("Request", "{}")
                 request = json.loads(request_str)
                 payload = request.get("Payload", "")
-                if isinstance(payload, str):
-                    payload_obj = json.loads(payload)
-                else:
-                    payload_obj = payload
-                event_name = payload_obj.get("EventName", "")
+                payload_obj = {}
+                if payload:
+                    payload_obj = json.loads(payload) if isinstance(payload, str) else payload
+                event_name = request.get("EventName") or payload_obj.get("EventName", "")
                 if event_name:
                     # EventName format: "Trad_Draft_MKM_20240301" or "Draft_MKM_20240301"
                     parts = event_name.split("_")
@@ -125,6 +127,8 @@ def _process_line(line: str, state: DraftState) -> bool:
                         fmt = "TradDraft"
                     elif draft_type == "BotDraft" or "BotDraft" in prefix or "BotDraft" in parts:
                         fmt = "QuickDraft"
+                    elif "PickTwoDraft" in parts:
+                        fmt = "PickTwoDraft"
                     else:
                         fmt = _DRAFT_FORMAT_MAP.get(draft_type, "PremierDraft")
                     state.set_code = set_code
@@ -263,13 +267,46 @@ def _process_line(line: str, state: DraftState) -> bool:
             request = json.loads(request_str) if isinstance(request_str, str) else request_str
             payload_str = request.get("Payload", "{}")
             payload = json.loads(payload_str) if isinstance(payload_str, str) else payload_str
-            arena_id = int(payload["GrpId"])
-            state.taken_cards.append(arena_id)
+            arena_ids = payload.get("GrpIds")
+            if arena_ids is None:
+                grp_id = payload.get("GrpId")
+                arena_ids = [int(grp_id)] if grp_id is not None else []
+            else:
+                arena_ids = [int(x) for x in arena_ids]
+            for arena_id in arena_ids:
+                state.taken_cards.append(arena_id)
             state.phase = DraftPhase.PICK_MADE
             changed = True
-            logger.debug("log_scanner: pick made (V1) — arena_id=%d", arena_id)
+            logger.debug("log_scanner: pick made (V1) — arena_ids=%s", arena_ids)
         except (json.JSONDecodeError, KeyError, TypeError, ValueError):
             logger.debug("log_scanner: failed to parse pick V1 line", exc_info=False)
+        return changed
+
+    # ------------------------------------------------------------------
+    # Pick detection — Premier V1 (no underscore variant, Pick Two)
+    # GrpIds may be at request level or inside Payload
+    # ------------------------------------------------------------------
+    idx = line.find(PICK_PREFIX_V1B)
+    if idx != -1:
+        try:
+            outer = json.loads(line[idx + len(PICK_PREFIX_V1B):])
+            request_str = outer.get("request", "{}")
+            request = json.loads(request_str) if isinstance(request_str, str) else request_str
+            payload_str = request.get("Payload", "{}")
+            payload = json.loads(payload_str) if isinstance(payload_str, str) else payload_str
+            arena_ids = request.get("GrpIds") or payload.get("GrpIds")
+            if arena_ids is None:
+                grp_id = request.get("GrpId") or payload.get("GrpId")
+                arena_ids = [int(grp_id)] if grp_id is not None else []
+            else:
+                arena_ids = [int(x) for x in arena_ids]
+            for arena_id in arena_ids:
+                state.taken_cards.append(arena_id)
+            state.phase = DraftPhase.PICK_MADE
+            changed = True
+            logger.debug("log_scanner: pick made (V1B) — arena_ids=%s", arena_ids)
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+            logger.debug("log_scanner: failed to parse pick V1B line", exc_info=False)
         return changed
 
     # ------------------------------------------------------------------
@@ -348,6 +385,48 @@ def _process_line(line: str, state: DraftState) -> bool:
                 )
         except (json.JSONDecodeError, KeyError, TypeError, ValueError):
             logger.debug("log_scanner: failed to parse Draft_CompleteDraft line", exc_info=False)
+        return changed
+
+    idx = line.find("[UnityCrossThreadLogger]==> DraftCompleteDraft ")
+    if idx != -1:
+        try:
+            outer = json.loads(line[idx + len("[UnityCrossThreadLogger]==> DraftCompleteDraft "):])
+            request_str = outer.get("request", "{}")
+            request = json.loads(request_str) if isinstance(request_str, str) else request_str
+            event_name = request.get("EventName", "")
+            if event_name:
+                parts = event_name.split("_")
+                draft_type = parts[0] if parts else ""
+                set_code_raw = ""
+                for i, part in enumerate(parts):
+                    if part.isalpha() and 2 <= len(part) <= 5 and i > 0:
+                        set_code_raw = part
+                        break
+                if not set_code_raw and len(parts) >= 3:
+                    set_code_raw = parts[2]
+                set_code = _strip_alchemy_prefix(set_code_raw) if set_code_raw else ""
+                if "PickTwoDraft" in parts:
+                    fmt = "PickTwoDraft"
+                elif draft_type == "Trad" and len(parts) >= 2 and parts[1] == "Draft":
+                    fmt = "TradDraft"
+                elif draft_type == "BotDraft" or "BotDraft" in parts:
+                    fmt = "QuickDraft"
+                else:
+                    fmt = _DRAFT_FORMAT_MAP.get(draft_type, "PremierDraft")
+                if not state.set_code:
+                    state.set_code = set_code
+                if not state.format:
+                    state.format = fmt
+                state.phase = DraftPhase.DRAFT_COMPLETE
+                state.pack_cards = []
+                changed = True
+                logger.debug(
+                    "log_scanner: draft complete (fallback) — set=%s format=%s",
+                    state.set_code,
+                    state.format,
+                )
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+            logger.debug("log_scanner: failed to parse DraftCompleteDraft line", exc_info=False)
         return changed
 
     return changed
@@ -554,11 +633,30 @@ async def log_consumer(app, queue: asyncio.Queue, state: DraftState) -> None:
 # Startup helper — parallel to start_watcher() in src/watcher.py
 # ---------------------------------------------------------------------------
 
+def _process_log_file(log_path: Path, state: DraftState) -> bool:
+    """Synchronously read new log lines and update state. Returns True if state changed."""
+    try:
+        file_size = log_path.stat().st_size
+        if state.file_offset > file_size:
+            state.file_offset = 0
+        with open(log_path, encoding="utf-8", errors="replace") as f:
+            f.seek(state.file_offset)
+            new_lines = f.readlines()
+            state.file_offset = f.tell()
+        changed = False
+        for line in new_lines:
+            changed |= _process_line(line, state)
+        return changed
+    except Exception:
+        logger.exception("log_scanner: error in initial read")
+        return False
+
+
 async def start_draft_scanner(app, log_path: Path, state: DraftState) -> None:
     """Start the watchdog Observer and the asyncio log consumer coroutine.
 
     Stores observer and queue on app.state so shutdown() can stop the observer.
-    Triggers an immediate read so any events already in the file are processed.
+    Does an immediate synchronous read so state is updated before we return.
     """
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue = asyncio.Queue()
@@ -571,8 +669,11 @@ async def start_draft_scanner(app, log_path: Path, state: DraftState) -> None:
     app.state.draft_observer = observer
     app.state.draft_log_queue = queue
 
-    # Trigger an initial read so events already written to the file are processed
-    queue.put_nowait(str(log_path.resolve()))
+    # Initial sync read - ensures state is updated before we return
+    _process_log_file(log_path, state)
 
+    # Trigger async consumer for future changes
+    queue.put_nowait(str(log_path.resolve()))
     asyncio.create_task(log_consumer(app, queue, state))
-    logger.info("log_scanner: started watching %s", log_path)
+    logger.info("log_scanner: started watching %s (state id=%d, app.state.draft_state id=%d)",
+                log_path, id(state), id(app.state.draft_state))
