@@ -80,6 +80,14 @@ REWARD_LOOKUP = {
     "TradDraft": {0: 200, 1: 500, 2: 1200, 3: 1800, 4: 2200},
 }
 
+# Default entry costs per format (gold) — used when entry cost not captured from draft start
+_DEFAULT_COST = {
+    "QuickDraft": 5000,
+    "PremierDraft": 10000,
+    "PickTwoDraft": 6000,
+    "TradDraft": 10000,
+}
+
 
 def _strip_alchemy_prefix(code: str) -> str:
     """Remove known Alchemy prefixes (Y25, Y, A) from set code."""
@@ -161,6 +169,16 @@ def _process_line(line: str, state: DraftState, app=None) -> bool:
                             if curr.get("CurrencyType") == "Gold":
                                 state.entry_cost_gold = int(curr.get("Quantity", 0))
                                 break
+                    if not entry_currency:
+                        request_entry = request.get("EntryCurrencyPaid") or request.get("EntryCurrency")
+                        if request_entry is not None:
+                            if isinstance(request_entry, (int, float)):
+                                state.entry_cost_gold = int(request_entry)
+                            elif isinstance(request_entry, list):
+                                for curr in request_entry:
+                                    if curr.get("CurrencyType") == "Gold":
+                                        state.entry_cost_gold = int(curr.get("Quantity", 0))
+                                        break
                     changed = True
                     logger.debug(
                         "log_scanner: draft started — set=%s format=%s",
@@ -488,6 +506,80 @@ def _process_line(line: str, state: DraftState, app=None) -> bool:
         return changed
 
     # ------------------------------------------------------------------
+    # Prize claim RESPONSE — parse the EventClaimPrize response JSON
+    # Detected by presence of both InternalEventName and InventoryInfo
+    # in a single line (the response body after the <= header).
+    # This has real CurrentWins, CurrentLosses, and InventoryGems.
+    # ------------------------------------------------------------------
+    if '"InternalEventName"' in line and '"InventoryInfo"' in line:
+        try:
+            data = json.loads(line)
+            course = data.get('Course', {})
+            event_name = course.get('InternalEventName', '')
+            if not event_name or 'Draft' not in event_name:
+                return changed
+
+            # Only process completed drafts (has wins/gems data)
+            module = course.get("CurrentModule", "")
+            if module not in ("Complete", "MatchResults"):
+                return changed
+
+            # Parse event name for set_code and format (mirrors draft-start logic)
+            parts = event_name.split('_')
+            draft_type = parts[0] if parts else ""
+            set_code_raw = ""
+            for i, part in enumerate(parts):
+                if part.isalpha() and 2 <= len(part) <= 5 and i > 0:
+                    set_code_raw = part
+                    break
+            if not set_code_raw and len(parts) >= 3:
+                set_code_raw = parts[2]
+            set_code = _strip_alchemy_prefix(set_code_raw) if set_code_raw else ""
+            if not set_code:
+                return changed
+
+            if draft_type == "Trad" and len(parts) >= 2 and parts[1] == "Draft":
+                fmt = "TradDraft"
+            elif "PickTwoDraft" in parts:
+                fmt = "PickTwoDraft"
+            elif draft_type == "BotDraft" or "QuickDraft" in event_name:
+                fmt = "QuickDraft"
+            else:
+                fmt = "PremierDraft"
+
+            wins = course.get('CurrentWins', 0) or 0
+            losses = course.get('CurrentLosses', 0) or 0
+
+            # Gems from InventoryInfo.Changes[0].InventoryGems
+            inv = data.get('InventoryInfo', {})
+            gems = 0
+            changes = inv.get('Changes', [])
+            if changes:
+                gems = changes[0].get('InventoryGems', 0)
+
+            # Entry cost: use state if available, else format default
+            cost = state.entry_cost_gold if state.entry_cost_gold > 0 else _DEFAULT_COST.get(fmt, 0)
+
+            if app and hasattr(app.state, "db") and cost > 0:
+                from datetime import date
+                today = date.today().isoformat()
+                trophy = 1 if (fmt == "PickTwoDraft" and wins >= 4) or (fmt != "PickTwoDraft" and wins >= 7) else 0
+                app.state.db.execute(
+                    """INSERT INTO draft_results (date, set_code, format, wins, losses, cost_gold, winnings_gems, trophy)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (today, set_code, fmt, wins, losses, cost, gems, trophy),
+                )
+                app.state.db.commit()
+                logger.info(
+                    "log_scanner: draft result from prize response — set=%s wins=%d gems=%d",
+                    set_code, wins, gems,
+                )
+                changed = True
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+            logger.debug("log_scanner: failed to parse prize response", exc_info=False)
+        return changed
+
+    # ------------------------------------------------------------------
     # Match events — track wins during draft matches
     # ------------------------------------------------------------------
     idx = line.find(MATCH_STATE_PREFIX)
@@ -712,7 +804,7 @@ async def log_consumer(app, queue: asyncio.Queue, state: DraftState) -> None:
 # Startup helper — parallel to start_watcher() in src/watcher.py
 # ---------------------------------------------------------------------------
 
-def _process_log_file(log_path: Path, state: DraftState) -> bool:
+def _process_log_file(log_path: Path, state: DraftState, app=None) -> bool:
     """Synchronously read new log lines and update state. Returns True if state changed."""
     try:
         file_size = log_path.stat().st_size
@@ -724,7 +816,7 @@ def _process_log_file(log_path: Path, state: DraftState) -> bool:
             state.file_offset = f.tell()
         changed = False
         for line in new_lines:
-            changed |= _process_line(line, state)
+            changed |= _process_line(line, state, app)
         return changed
     except Exception:
         logger.exception("log_scanner: error in initial read")
@@ -748,8 +840,14 @@ async def start_draft_scanner(app, log_path: Path, state: DraftState) -> None:
     app.state.draft_observer = observer
     app.state.draft_log_queue = queue
 
+    # Also process Player-prev.log if it exists (log rotation)
+    prev_log = log_path.with_name(log_path.name.replace('.log', '-prev.log'))
+    if prev_log.exists():
+        logger.info("log_scanner: also scanning prev log %s", prev_log)
+        _process_log_file(prev_log, state, app)
+
     # Initial sync read - ensures state is updated before we return
-    _process_log_file(log_path, state)
+    _process_log_file(log_path, state, app)
 
     # Trigger async consumer for future changes
     queue.put_nowait(str(log_path.resolve()))
