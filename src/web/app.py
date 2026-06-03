@@ -163,10 +163,11 @@ async def startup():
     app.state.db = init_db()
     app.state.templates = templates
     from src.collection import find_collection_file
-    from src.watcher import start_watcher
+    from src.watcher import start_watcher, start_wallet_watcher
     collection_path = find_collection_file()
     if collection_path:
         await start_watcher(app, collection_path)
+    await start_wallet_watcher(app)
 
     # Initialize draft tracker state
     from src.draft.state import DraftState
@@ -198,6 +199,9 @@ async def shutdown():
     if hasattr(app.state, "watcher_observer"):
         app.state.watcher_observer.stop()
         app.state.watcher_observer.join()
+    if hasattr(app.state, "wallet_watcher_observer"):
+        app.state.wallet_watcher_observer.stop()
+        app.state.wallet_watcher_observer.join()
     if hasattr(app.state, "draft_observer"):
         app.state.draft_observer.stop()
         app.state.draft_observer.join()

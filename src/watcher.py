@@ -20,6 +20,8 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 from src.collection import find_collection_file, upsert_collection
+from src.db.log_parser import find_player_log
+from src.wallet import capture_wallet_snapshot_from_log
 
 logger = logging.getLogger(__name__)
 
@@ -80,3 +82,60 @@ async def start_watcher(app, collection_path: Path) -> None:
 
     asyncio.create_task(collection_reload_consumer(app, queue))
     logger.info("watcher: started watching %s", collection_path)
+
+
+class WalletFileHandler(FileSystemEventHandler):
+    """Bridges watchdog OS-thread events to the asyncio event loop queue for Player.log."""
+
+    def __init__(self, loop: asyncio.AbstractEventLoop, queue: asyncio.Queue, target_path: Path):
+        self._loop = loop
+        self._queue = queue
+        self._target = str(target_path.resolve())
+
+    def on_modified(self, event):
+        if event.is_directory:
+            return
+        if str(Path(event.src_path).resolve()) != self._target:
+            return
+        self._loop.call_soon_threadsafe(self._queue.put_nowait, event.src_path)
+
+
+async def wallet_reload_consumer(app, queue: asyncio.Queue) -> None:
+    """Asyncio coroutine: dequeue Player.log events, debounce, capture wallet snapshot."""
+    while True:
+        path = await queue.get()
+        # Debounce: MTGA writes logs in bursts; wait 2s then drain
+        await asyncio.sleep(2.0)
+        while not queue.empty():
+            queue.get_nowait()
+        try:
+            capture_wallet_snapshot_from_log(Path(path), app.state.db)
+            logger.info("wallet: auto-captured snapshot from %s", path)
+        except Exception:
+            logger.exception("wallet: error during auto-capture")
+
+
+async def start_wallet_watcher(app) -> None:
+    """Start watchdog observer on Player.log for wallet updates.
+
+    Locates Player.log via find_player_log(), then watches its directory
+    for modifications and captures wallet snapshots on change.
+    """
+    log_path = find_player_log(app.state.db)
+    if log_path is None:
+        logger.warning("wallet_watcher: Player.log not found; wallet watcher not started")
+        return
+
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+
+    handler = WalletFileHandler(loop, queue, log_path)
+    observer = Observer()
+    observer.schedule(handler, path=str(log_path.parent.resolve()), recursive=False)
+    observer.start()
+
+    app.state.wallet_watcher_observer = observer
+    app.state.wallet_watcher_queue = queue
+
+    asyncio.create_task(wallet_reload_consumer(app, queue))
+    logger.info("wallet_watcher: started watching %s", log_path)

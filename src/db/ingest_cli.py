@@ -1,16 +1,17 @@
 """ingest_cli.py — End-to-end CLI entry point for the MTGA data pipeline.
 
 Wires schema init, native CardDB ingest, Scryfall bulk download + enrichment,
-and collection upsert into a single command:
+collection upsert, and wallet snapshot into a single command:
 
     python src/db/ingest_cli.py [OPTIONS]
 
 Phase 6 source hierarchy:
-  [1/5] Database init        — init_db()
-  [2/5] Native CardDB load   — find_card_db() + ingest_mtga_card_db()
-  [3/5] Scryfall enrichment  — download_bulk() (if needed) + ingest_scryfall()
-  [4/5] Collection upsert    — upsert_collection()
-  [5/5] Errata + Summary     — apply_errata()
+  [1/6] Database init        — init_db()
+  [2/6] Native CardDB load   — find_card_db() + ingest_mtga_card_db()
+  [3/6] Scryfall enrichment  — download_bulk() (if needed) + ingest_scryfall()
+  [4/6] Collection upsert    — upsert_collection()
+  [5/6] Wallet snapshot      — capture_wallet_snapshot()
+  [6/6] Errata + Summary     — apply_errata()
 
 Arguments:
     --db PATH              Override DB path (default: ~/mtga_collection.db)
@@ -20,6 +21,8 @@ Arguments:
     --skip-download        Skip Scryfall download; use existing cache file
     --skip-collection      Skip collection upsert step
     --skip-mtga-card-db    Skip native CardDB step (e.g. MTGA not installed)
+    --skip-wallet          Skip wallet snapshot step
+    --wallet-only          Only capture wallet snapshot (skip CardDB, Scryfall, collection, errata)
 """
 
 import argparse
@@ -42,6 +45,7 @@ from src.db.ingest import get_bulk_download_uri, download_bulk, ingest_scryfall,
 from src.db.mtga_card_db import find_card_db, ingest_mtga_card_db
 from src.collection import find_collection_file, upsert_collection
 from src.db.errata import apply_errata
+from src.wallet import capture_wallet_snapshot
 
 DEFAULT_CACHE_PATH = DATA_DIR / "scryfall_all_cards.json"
 
@@ -86,23 +90,45 @@ def main() -> None:
         action="store_true",
         help="Skip native MTGA CardDB step (use when MTGA is not installed)",
     )
+    parser.add_argument(
+        "--skip-wallet",
+        action="store_true",
+        help="Skip wallet snapshot step",
+    )
+    parser.add_argument(
+        "--wallet-only",
+        action="store_true",
+        help="Only capture wallet snapshot (skip CardDB, Scryfall, collection, errata)",
+    )
 
     args = parser.parse_args()
     cache_path: Path = args.scryfall_cache
 
     # ------------------------------------------------------------------ #
-    # [1/5] Database init
+    # [1/6] Database init
     # ------------------------------------------------------------------ #
-    print("[1/5] Initializing database...")
+    print("[1/6] Initializing database...")
     conn = init_db(args.db)
     print(f"      DB: {args.db}")
 
+    # --wallet-only: skip straight to wallet capture after init
+    if args.wallet_only:
+        mtga_count = 0
+        card_count = 0
+        collection_count = 0
+        print("[2/6] Skipping native CardDB (--wallet-only).")
+        print("[3/6] Skipping Scryfall enrichment (--wallet-only).")
+        print("[4/6] Skipping collection upsert (--wallet-only).")
+        goto_wallet = True
+    else:
+        goto_wallet = False
+
     # ------------------------------------------------------------------ #
-    # [2/5] Native CardDB load
+    # [2/6] Native CardDB load
     # ------------------------------------------------------------------ #
     mtga_count = 0
-    if not args.skip_mtga_card_db:
-        print("[2/5] Loading native MTGA card catalog...")
+    if not args.skip_mtga_card_db and not goto_wallet:
+        print("[2/6] Loading native MTGA card catalog...")
         card_db_path = find_card_db()
         if card_db_path is None:
             print("ERROR: Native MTGA CardDatabase not found. Expected at:")
@@ -124,23 +150,26 @@ def main() -> None:
         conn.execute("INSERT OR REPLACE INTO meta VALUES ('mtga_card_db_last_updated', ?)", (now,))
         conn.commit()
     else:
-        print("[2/5] Skipping native MTGA CardDB (--skip-mtga-card-db).")
+        print("[2/6] Skipping native MTGA CardDB (--skip-mtga-card-db).")
 
     # ------------------------------------------------------------------ #
-    # [3/5] Scryfall enrichment
+    # [3/6] Scryfall enrichment
     # ------------------------------------------------------------------ #
     card_count = 0
-    if not args.skip_download:
-        print("[3/5] Fetching Scryfall bulk data index...")
+    if goto_wallet:
+        # skip the entire block
+        pass
+    elif not args.skip_download:
+        print("[3/6] Fetching Scryfall bulk data index...")
         uri = get_bulk_download_uri()
-        print("[3/5] Downloading all_cards (~2 GB)...")
+        print("[3/6] Downloading all_cards (~2 GB)...")
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         t0 = time.time()
         download_bulk(uri, cache_path)
         elapsed = time.time() - t0
         print(f"      Downloaded in {elapsed:.1f}s → {cache_path}")
     else:
-        print(f"[3/5] Using cached Scryfall data: {cache_path}")
+        print(f"[3/6] Using cached Scryfall data: {cache_path}")
         if not cache_path.exists():
             print(
                 f"ERROR: Cache file not found: {cache_path}\n"
@@ -181,7 +210,7 @@ def main() -> None:
         if set_code and cn:
             rebalanced_id_map[(set_code.lower(), str(cn))] = arena_id
 
-    print("[3/5] Enriching cards with Scryfall data...")
+    print("[3/6] Enriching cards with Scryfall data...")
     t0 = time.time()
     card_count = ingest_scryfall(
         cache_path, conn,
@@ -201,42 +230,59 @@ def main() -> None:
     print(f"      API-enriched {api_enriched} cards missed by bulk ingest (set code mismatch).")
 
     # ------------------------------------------------------------------ #
-    # [4/5] Collection upsert
+    # [4/6] Collection upsert
     # ------------------------------------------------------------------ #
     collection_count = 0
-    if not args.skip_collection:
+    if goto_wallet:
+        pass
+    elif not args.skip_collection:
         if args.collection:
             collection_path = args.collection
         else:
             collection_path = find_collection_file()
 
         if collection_path and Path(collection_path).exists():
-            print(f"[4/5] Loading collection from {collection_path}...")
+            print(f"[4/6] Loading collection from {collection_path}...")
             t0 = time.time()
             collection_count = upsert_collection(conn, collection_path)
             elapsed = time.time() - t0
             print(f"      Loaded {collection_count} collection entries in {elapsed:.1f}s.")
         else:
             print(
-                "[4/5] No collection file found. Skipping. "
+                "[4/6] No collection file found. Skipping. "
                 "(Run again with --collection PATH)"
             )
     else:
-        print("[4/5] Skipping collection upsert (--skip-collection).")
+        print("[4/6] Skipping collection upsert (--skip-collection).")
 
     # ------------------------------------------------------------------ #
-    # [5/5] Summary
+    # [5/6] Wallet snapshot
     # ------------------------------------------------------------------ #
+    wallet_captured = False
+    if args.wallet_only:
+        print("[5/6] Capturing wallet snapshot...")
+        capture_wallet_snapshot(conn)
+        wallet_captured = True
+    elif not args.skip_wallet:
+        print("[5/6] Capturing wallet snapshot...")
+        capture_wallet_snapshot(conn)
+        wallet_captured = True
+    else:
+        print("[5/6] Skipping wallet snapshot (--skip-wallet).")
+
     # ------------------------------------------------------------------ #
-    # [5/5] Errata + Summary
+    # [6/6] Errata + Summary
     # ------------------------------------------------------------------ #
-    errata_count = apply_errata(conn)
+    errata_count = apply_errata(conn) if not args.wallet_only else 0
+    if args.wallet_only:
+        print("[6/6] Skipping errata (--wallet-only).")
 
     print()
     print("=== Ingest complete ===")
     print(f"  MTGA native cards:  {mtga_count}")
     print(f"  Scryfall enriched:  {card_count}")
     print(f"  Collection rows:    {collection_count}")
+    print(f"  Wallet captured:    {wallet_captured}")
     print(f"  Errata applied:     {errata_count}")
     print(f"  DB path:            {args.db}")
     conn.close()
