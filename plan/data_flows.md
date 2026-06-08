@@ -231,7 +231,7 @@ Scryfall has no separate entries for Alchemy rebalanced variants — copies imag
 **Phases:**
 1. Database init — `init_db()` (schema + indexes)
 2. Native CardDB load — `DELETE FROM cards` (fresh start) + `ingest_mtga_card_db()`
-3. Scryfall enrichment — download (if needed) + `ingest_scryfall()` + `backfill_rebalanced_images()` + `enrich_missing_from_api()`
+3. Scryfall enrichment — download (if needed) + `ingest_scryfall()` + `backfill_rebalanced_images()` + `enrich_missing_from_api()` + `populate_set_info_from_scryfall()`
 4. Collection upsert — `upsert_collection()`
 5. Wallet snapshot — `capture_wallet_snapshot()`
 6. Errata — `apply_errata()` + summary
@@ -705,7 +705,7 @@ _ALLOWED_FIELDS = {
 
 ## 8. Set Info Flow
 
-| File | `src/web/routes/_set_info.py` |
+| File | `src/db/ingest.py` (populate) + `src/web/routes/_set_info.py` (cache) |
 |---|---|
 
 **Purpose:** Maps set codes to display names, SVG icons, and set types for the set tracker UI.
@@ -715,25 +715,46 @@ _ALLOWED_FIELDS = {
 MAJOR_SET_TYPES = frozenset({"expansion", "core", "masters", "draft_innovation"})
 ```
 
-**Flow:**
+**Population (ingest pipeline):**
+
+Set metadata is fetched once from `https://api.scryfall.com/sets` during the Scryfall enrichment step and written to the `set_info` table:
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│  _ensure_set_info(db)                                                │
-│                                                                      │
-│  1. Load from DB cache (set_info table)                             │
-│     → _SET_INFO populated instantly                                  │
-│     → UI never shows blank if Scryfall is down                      │
-│                                                                      │
-│  2. Try Scryfall /sets API refresh                                  │
-│     → https://api.scryfall.com/sets (User-Agent header)             │
-│     → 1042 sets returned, ~194 primary-type                         │
-│     → _SET_INFO dict updated                                        │
-│     → DB cache upserted (set_info table)                            │
-│                                                                      │
-│  3. If Scryfall fails: DB cache still in memory → filters work     │
-└──────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│  populate_set_info_from_scryfall(conn)  ← in src/db/ingest.py    │
+│                                                                   │
+│  1. GET https://api.scryfall.com/sets                            │
+│     → 1042 sets returned, ~194 primary-type                      │
+│  2. INSERT OR REPLACE INTO set_info                              │
+│     (set_code, name, icon_svg_uri, set_type, updated_at)         │
+│                                                                   │
+│  Called after Scryfall bulk enrich in:                           │
+│    • ingest_cli.py [3/6] — during full pipeline                  │
+│    • settings.py /refresh-scryfall — manual refresh via UI       │
+└──────────────────────────────────────────────────────────────────┘
 ```
+
+**Caching (web layer):**
+
+The web layer reads from the DB cache only — no live Scryfall calls:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  _ensure_set_info(db)  ← in src/web/routes/_set_info.py          │
+│                                                                   │
+│  1. If _SET_INFO already populated → return                      │
+│  2. SELECT set_code, name, icon_svg_uri, set_type FROM set_info  │
+│     → _SET_INFO dict populated from DB                           │
+│     → UI never shows blank if Scryfall is down                   │
+│                                                                   │
+│  No live Scryfall API call.                                      │
+│  DB was populated during ingest.                                 │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Cache invalidation:**
+- `invalidate_set_info_cache()` clears the in-memory `_SET_INFO` dict
+- Called after `refresh-scryfall` so the new set data is picked up on the next page load
 
 **DB cache schema:**
 ```sql
@@ -787,7 +808,7 @@ Which source wins for each field in the `cards` table:
 | `collection_snapshots` | Collection upsert | Auto-generated diff tracking |
 | `wallet_snapshots` | Player.log StartHook | Per-day snapshot |
 | `draft_results` | Player.log prize events | Only inserted on completed drafts |
-| `set_info` | Scryfall `/sets` API | Cache in DB, refreshed on request |
+| `set_info` | Scryfall `/sets` API (during ingest only) | Populated by ingest pipeline, read by web layer |
 | `errata` | Hardcoded + manual overrides | Seeded every pipeline run |
 | `meta` | Various pipeline steps | Key-value config/last-updated store |
 
