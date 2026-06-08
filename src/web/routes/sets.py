@@ -118,7 +118,7 @@ MISSING_CARDS_SQL = """
 
 def _get_set_summaries(db) -> list[dict]:
     """Return set list with completion and wildcard cost summaries."""
-    _ensure_set_info()
+    _ensure_set_info(db)
     rows = db.execute(SET_LIST_SQL).fetchall()
     result = []
     for r in rows:
@@ -151,7 +151,7 @@ def _set_is_booster_backed(db, set_code: str) -> bool:
 
 def _get_set_breakdown(db, set_code: str) -> dict:
     """Return per-rarity breakdown and missing card list for one set."""
-    _ensure_set_info()
+    _ensure_set_info(db)
     code = set_code.lower()
     info = _SET_INFO.get(code, {})
     booster_filter = 1 if _set_is_booster_backed(db, set_code) else 0

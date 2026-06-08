@@ -11,7 +11,7 @@ from fastapi.responses import RedirectResponse, StreamingResponse
 
 from src.collection import find_collection_file, upsert_collection
 from src.db.errata import apply_errata
-from src.db.ingest import get_bulk_download_uri, download_bulk, ingest_scryfall, backfill_rebalanced_images, enrich_missing_from_api
+from src.db.ingest import get_bulk_download_uri, download_bulk, ingest_scryfall, backfill_rebalanced_images, enrich_missing_from_api, populate_set_info_from_scryfall
 from src.db.mtga_card_db import find_card_db, ingest_mtga_card_db
 from src.db.log_parser import find_player_log, parse_log_decks
 from src.db.decks import _build_arena_text_from_log_deck, import_deck
@@ -307,6 +307,9 @@ async def refresh_scryfall(request: Request):
             )
             await asyncio.get_event_loop().run_in_executor(None, lambda: backfill_rebalanced_images(db))
             await asyncio.get_event_loop().run_in_executor(None, lambda: enrich_missing_from_api(db, _progress))
+            await asyncio.get_event_loop().run_in_executor(
+                None, lambda: populate_set_info_from_scryfall(db)
+            )
 
             now = datetime.now(timezone.utc).isoformat()
             db.execute("INSERT OR REPLACE INTO meta VALUES ('scryfall_last_updated', ?)", (now,))

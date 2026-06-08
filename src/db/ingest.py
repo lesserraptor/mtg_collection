@@ -599,3 +599,41 @@ def backfill_rebalanced_images(conn) -> int:
     """)
     conn.commit()
     return cursor.rowcount
+
+
+def populate_set_info_from_scryfall(conn: sqlite3.Connection) -> int:
+    """Fetch set list from Scryfall API and populate the set_info table.
+
+    Should be called after Scryfall bulk ingest (ingest_scryfall) to ensure
+    set metadata is cached locally. The set_info table is used by the web
+    layer for set names, icons, and types.
+
+    Returns the number of sets inserted or updated.
+    """
+    from datetime import datetime, timezone
+
+    resp = requests.get(
+        "https://api.scryfall.com/sets",
+        headers={"User-Agent": USER_AGENT},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    now = datetime.now(timezone.utc).isoformat()
+    rows = []
+    for s in resp.json().get("data", []):
+        code = s.get("code", "").lower()
+        if code:
+            rows.append((
+                code,
+                s.get("name", code.upper()),
+                s.get("icon_svg_uri", ""),
+                s.get("set_type", ""),
+                now,
+            ))
+    conn.executemany(
+        "INSERT OR REPLACE INTO set_info (set_code, name, icon_svg_uri, set_type, updated_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        rows,
+    )
+    conn.commit()
+    return len(rows)

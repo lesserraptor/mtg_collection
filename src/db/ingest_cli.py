@@ -41,7 +41,7 @@ if _PROJECT_ROOT not in sys.path:
 
 from src.config import DATA_DIR
 from src.db.schema import DB_PATH, init_db
-from src.db.ingest import get_bulk_download_uri, download_bulk, ingest_scryfall, backfill_rebalanced_images, enrich_missing_from_api
+from src.db.ingest import get_bulk_download_uri, download_bulk, ingest_scryfall, backfill_rebalanced_images, enrich_missing_from_api, populate_set_info_from_scryfall
 from src.db.mtga_card_db import find_card_db, ingest_mtga_card_db
 from src.collection import find_collection_file, upsert_collection
 from src.db.errata import apply_errata
@@ -228,6 +228,9 @@ def main() -> None:
 
     api_enriched = enrich_missing_from_api(conn)
     print(f"      API-enriched {api_enriched} cards missed by bulk ingest (set code mismatch).")
+
+    set_info_count = populate_set_info_from_scryfall(conn)
+    print(f"      Populated {set_info_count} set metadata entries.")
 
     # ------------------------------------------------------------------ #
     # [4/6] Collection upsert

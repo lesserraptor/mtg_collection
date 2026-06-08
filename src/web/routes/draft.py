@@ -31,7 +31,7 @@ def _get_draft_sets(db) -> list[dict]:
     threshold (>=75 unique cards) if the Scryfall cache is empty.
     """
     from src.web.routes._set_info import _SET_INFO, _ensure_set_info
-    _ensure_set_info()
+    _ensure_set_info(db)
     rows = db.execute("""
         SELECT set_code, MAX(arena_id) AS max_arena_id, COUNT(DISTINCT arena_id) AS cnt
         FROM cards

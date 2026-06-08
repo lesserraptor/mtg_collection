@@ -35,7 +35,7 @@ def capture_wallet_snapshot_from_log(log_path: Path, conn: sqlite3.Connection) -
 
     wallet = parse_log_wallet(log_path)
     if wallet is None:
-        logger.warning("wallet: parse_log_wallet returned None for %s", log_path)
+        logger.info("wallet: parse_log_wallet returned None for %s", log_path)
         return
 
     total_cards = conn.execute("""

@@ -406,7 +406,7 @@ def get_filter_options(db) -> dict:
     # booster=1 is enforced only for sets that actually have a booster product (>= 50
     # booster cards) — matches the sets.py set tracker logic so the two views stay in
     # sync and Alchemy/commander sets whose cards all carry booster=0 still show up.
-    _ensure_set_info()
+    _ensure_set_info(db)
     set_rows = db.execute("""
         WITH booster_sets AS (
             SELECT set_code FROM cards
