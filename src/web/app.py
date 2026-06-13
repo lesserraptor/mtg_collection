@@ -191,6 +191,18 @@ async def startup():
         else ['gihwr', 'ohwr', 'iwd', 'gwr', 'ata', 'alsa']
     )
 
+    # Initial scan for completed draft results from Player.log
+    try:
+        from src.draft.results_importer import scan_draft_results_from_log
+        from src.db.log_parser import find_player_log
+        log_path = find_player_log(app.state.db)
+        if log_path and log_path.exists():
+            count = scan_draft_results_from_log(log_path, app.state.db)
+            if count > 0:
+                logger.info("startup: imported %d completed draft(s) from %s", count, log_path)
+    except Exception:
+        logger.exception("startup: error scanning for draft results")
+
     logger.info("draft scanner: not started — use the Start Listening button on /draft")
 
 

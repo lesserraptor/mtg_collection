@@ -101,7 +101,7 @@ class WalletFileHandler(FileSystemEventHandler):
 
 
 async def wallet_reload_consumer(app, queue: asyncio.Queue) -> None:
-    """Asyncio coroutine: dequeue Player.log events, debounce, capture wallet snapshot."""
+    """Asyncio coroutine: dequeue Player.log events, debounce, capture wallet snapshot + draft results."""
     while True:
         path = await queue.get()
         # Debounce: MTGA writes logs in bursts; wait 2s then drain
@@ -113,6 +113,15 @@ async def wallet_reload_consumer(app, queue: asyncio.Queue) -> None:
             logger.info("wallet: auto-captured snapshot from %s", path)
         except Exception:
             logger.exception("wallet: error during auto-capture")
+
+        # Also scan for completed draft results
+        try:
+            from src.draft.results_importer import scan_draft_results_from_log
+            count = scan_draft_results_from_log(Path(path), app.state.db)
+            if count > 0:
+                logger.info("draft_results: imported %d completed draft(s) from %s", count, path)
+        except Exception:
+            logger.exception("draft_results: error during import")
 
 
 async def start_wallet_watcher(app) -> None:

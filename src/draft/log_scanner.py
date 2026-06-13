@@ -73,13 +73,6 @@ _DRAFT_FORMAT_MAP = {
     "TradSealed": "TradSealed",
 }
 
-REWARD_LOOKUP = {
-    "PickTwoDraft": {0: 50, 1: 150, 2: 800, 3: 1000, 4: 1300},
-    "QuickDraft": {0: 50, 1: 100, 2: 200, 3: 300, 4: 450, 5: 650, 6: 850, 7: 950},
-    "PremierDraft": {0: 50, 1: 100, 2: 250, 3: 1000, 4: 1400, 5: 1600, 6: 1800, 7: 2200},
-    "TradDraft": {0: 200, 1: 500, 2: 1200, 3: 1800, 4: 2200},
-}
-
 # Default entry costs per format (gold) — used when entry cost not captured from draft start
 _DEFAULT_COST = {
     "QuickDraft": 5000,
@@ -99,9 +92,6 @@ def _strip_alchemy_prefix(code: str) -> str:
                 return stripped.upper()
     return code.upper()
 
-
-# Prize claim event prefix
-PRIZE_CLAIM_PREFIX = "[UnityCrossThreadLogger]==> EventClaimPrize "
 
 # Match event prefix for tracking wins
 MATCH_STATE_PREFIX = "[UnityCrossThreadLogger]==> matchGameRoomStateChangedEvent "
@@ -470,116 +460,6 @@ def _process_line(line: str, state: DraftState, app=None) -> bool:
         return changed
 
     # ------------------------------------------------------------------
-    # Prize claim — insert draft result to DB
-    # ------------------------------------------------------------------
-    idx = line.find(PRIZE_CLAIM_PREFIX)
-    if idx != -1:
-        try:
-            outer = json.loads(line[idx + len(PRIZE_CLAIM_PREFIX):])
-            request_str = outer.get("request", "{}")
-            request = json.loads(request_str) if isinstance(request_str, str) else request_str
-            payload_str = request.get("Payload", "{}")
-            payload = json.loads(payload_str) if isinstance(payload_str, str) else payload_str
-            current_wins = payload.get("CurrentWins", 0)
-            state.wins = int(current_wins)
-            format_name = state.format or "PremierDraft"
-            winnings_gems = REWARD_LOOKUP.get(format_name, {}).get(state.wins, 0)
-            trophy = 1 if (format_name == "PickTwoDraft" and state.wins >= 4) or (format_name != "PickTwoDraft" and state.wins >= 7) else 0
-            if app and hasattr(app.state, "db") and state.set_code and state.entry_cost_gold > 0:
-                from datetime import date
-                today = date.today().isoformat()
-                app.state.db.execute(
-                    """
-                    INSERT INTO draft_results (date, set_code, format, wins, losses, cost_gold, winnings_gems, trophy)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (today, state.set_code, format_name, state.wins, 0, state.entry_cost_gold, winnings_gems, trophy),
-                )
-                app.state.db.commit()
-                logger.info(
-                    "log_scanner: draft result recorded — set=%s wins=%d gems=%d trophy=%d",
-                    state.set_code, state.wins, winnings_gems, trophy,
-                )
-            changed = True
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-            logger.debug("log_scanner: failed to parse prize claim line", exc_info=False)
-        return changed
-
-    # ------------------------------------------------------------------
-    # Prize claim RESPONSE — parse the EventClaimPrize response JSON
-    # Detected by presence of both InternalEventName and InventoryInfo
-    # in a single line (the response body after the <= header).
-    # This has real CurrentWins, CurrentLosses, and InventoryGems.
-    # ------------------------------------------------------------------
-    if '"InternalEventName"' in line and '"InventoryInfo"' in line:
-        try:
-            data = json.loads(line)
-            course = data.get('Course', {})
-            event_name = course.get('InternalEventName', '')
-            if not event_name or 'Draft' not in event_name:
-                return changed
-
-            # Only process completed drafts (has wins/gems data)
-            module = course.get("CurrentModule", "")
-            if module not in ("Complete", "MatchResults"):
-                return changed
-
-            # Parse event name for set_code and format (mirrors draft-start logic)
-            parts = event_name.split('_')
-            draft_type = parts[0] if parts else ""
-            set_code_raw = ""
-            for i, part in enumerate(parts):
-                if part.isalpha() and 2 <= len(part) <= 5 and i > 0:
-                    set_code_raw = part
-                    break
-            if not set_code_raw and len(parts) >= 3:
-                set_code_raw = parts[2]
-            set_code = _strip_alchemy_prefix(set_code_raw) if set_code_raw else ""
-            if not set_code:
-                return changed
-
-            if draft_type == "Trad" and len(parts) >= 2 and parts[1] == "Draft":
-                fmt = "TradDraft"
-            elif "PickTwoDraft" in parts:
-                fmt = "PickTwoDraft"
-            elif draft_type == "BotDraft" or "QuickDraft" in event_name:
-                fmt = "QuickDraft"
-            else:
-                fmt = "PremierDraft"
-
-            wins = course.get('CurrentWins', 0) or 0
-            losses = course.get('CurrentLosses', 0) or 0
-
-            # Gems from InventoryInfo.Changes[0].InventoryGems
-            inv = data.get('InventoryInfo', {})
-            gems = 0
-            changes = inv.get('Changes', [])
-            if changes:
-                gems = changes[0].get('InventoryGems', 0)
-
-            # Entry cost: use state if available, else format default
-            cost = state.entry_cost_gold if state.entry_cost_gold > 0 else _DEFAULT_COST.get(fmt, 0)
-
-            if app and hasattr(app.state, "db") and cost > 0:
-                from datetime import date
-                today = date.today().isoformat()
-                trophy = 1 if (fmt == "PickTwoDraft" and wins >= 4) or (fmt != "PickTwoDraft" and wins >= 7) else 0
-                app.state.db.execute(
-                    """INSERT INTO draft_results (date, set_code, format, wins, losses, cost_gold, winnings_gems, trophy)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (today, set_code, fmt, wins, losses, cost, gems, trophy),
-                )
-                app.state.db.commit()
-                logger.info(
-                    "log_scanner: draft result from prize response — set=%s wins=%d gems=%d",
-                    set_code, wins, gems,
-                )
-                changed = True
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-            logger.debug("log_scanner: failed to parse prize response", exc_info=False)
-        return changed
-
-    # ------------------------------------------------------------------
     # Match events — track wins during draft matches
     # ------------------------------------------------------------------
     idx = line.find(MATCH_STATE_PREFIX)
@@ -845,6 +725,8 @@ async def start_draft_scanner(app, log_path: Path, state: DraftState) -> None:
     if prev_log.exists():
         logger.info("log_scanner: also scanning prev log %s", prev_log)
         _process_log_file(prev_log, state, app)
+        # Reset offset after prev-log scan so current log is not skipped
+        state.file_offset = 0
 
     # Initial sync read - ensures state is updated before we return
     _process_log_file(log_path, state, app)
