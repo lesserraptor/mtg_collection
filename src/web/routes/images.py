@@ -60,7 +60,7 @@ async def clear_image_cache(arena_id: int, request: Request):
         "SELECT scryfall_id FROM cards WHERE arena_id = ?", (arena_id,)
     ).fetchone()
     if not row or not row["scryfall_id"]:
-        raise HTTPException(status_code=404, detail=f"No card for arena_id={arena_id}")
+        return {"cleared": True, "note": "no cached file"}
 
     for suffix in ["", "_back"]:
         path = IMAGE_CACHE / f"{row['scryfall_id']}{suffix}.jpg"

@@ -509,7 +509,7 @@ def enrich_missing_from_api(
         SELECT arena_id, name FROM cards
         WHERE cmc IS NULL
           AND is_rebalanced = 0
-          AND scryfall_id IS NOT NULL AND scryfall_id != ''
+          AND (scryfall_id IS NULL OR scryfall_id = '')
         ORDER BY arena_id
     """).fetchall()
 

@@ -1,5 +1,9 @@
 # AGENTS.md — MTGA Collection Browser
 
+NEVER do these things:
+- roll back work you've done without confirming with the user
+- delete a database without confirming with the user
+
 ## Quick start
 
 ```bash

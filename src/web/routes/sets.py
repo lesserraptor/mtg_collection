@@ -96,7 +96,12 @@ MISSING_CARDS_SQL = """
     )
     SELECT
         c.arena_id, c.name, c.rarity, c.mana_cost, c.type_line,
-        c.image_uri_front, c.colors, c.set_code,
+        COALESCE(c.image_uri_front, (
+            SELECT c2.image_uri_front FROM cards c2
+            WHERE LOWER(c2.name) = LOWER(c.name)
+              AND c2.image_uri_front IS NOT NULL
+            LIMIT 1
+        )) AS image_uri_front, c.colors, c.set_code,
         COALESCE(col.quantity, 0) AS owned_quantity,
         CASE WHEN 4 - COALESCE(col.quantity, 0) > 0
              THEN 4 - COALESCE(col.quantity, 0) ELSE 0 END AS wildcards_needed,
