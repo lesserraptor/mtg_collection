@@ -61,7 +61,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
             image_uri_front  TEXT,
             image_uri_back   TEXT,
             is_rebalanced    INTEGER NOT NULL DEFAULT 0,
-            booster          INTEGER NOT NULL DEFAULT 1
+            booster          INTEGER NOT NULL DEFAULT 1,
+            is_active        INTEGER NOT NULL DEFAULT 1
         );
 
         CREATE TABLE IF NOT EXISTS collection (
@@ -110,6 +111,13 @@ def create_schema(conn: sqlite3.Connection) -> None:
     # Scryfall ingest overwrites with the real value on the next refresh.
     try:
         conn.execute("ALTER TABLE cards ADD COLUMN booster INTEGER NOT NULL DEFAULT 1")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    # Migration: add cards.is_active column (1 = in current MTGA CardDB, 0 = stale).
+    # Kept in sync with scripts/migrate.py (schema_version 2).
+    try:
+        conn.execute("ALTER TABLE cards ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
         conn.commit()
     except sqlite3.OperationalError:
         pass  # Column already exists

@@ -35,7 +35,7 @@ def _get_draft_sets(db) -> list[dict]:
     rows = db.execute("""
         SELECT set_code, MAX(arena_id) AS max_arena_id, COUNT(DISTINCT arena_id) AS cnt
         FROM cards
-        WHERE is_rebalanced = 0 AND rarity NOT IN ('basic')
+        WHERE is_rebalanced = 0 AND rarity NOT IN ('basic') AND is_active = 1
         GROUP BY set_code
         HAVING cnt >= 10
         ORDER BY max_arena_id DESC

@@ -11,7 +11,7 @@ from fastapi.responses import RedirectResponse, StreamingResponse
 
 from src.collection import find_collection_file, upsert_collection
 from src.db.errata import apply_errata
-from src.db.ingest import get_bulk_download_uri, download_bulk, ingest_scryfall, backfill_rebalanced_images, enrich_missing_from_api, populate_set_info_from_scryfall
+from src.db.ingest import get_bulk_download_uri, download_bulk, ingest_scryfall, backfill_rebalanced_images, populate_set_info_from_scryfall, count_missing_scryfall
 from src.db.mtga_card_db import find_card_db, ingest_mtga_card_db
 from src.db.log_parser import find_player_log, parse_log_decks
 from src.db.decks import _build_arena_text_from_log_deck, import_deck
@@ -182,7 +182,7 @@ async def refresh_mtga_card_db(request: Request):
     loop = asyncio.get_event_loop()
 
     def _progress(stage, rows, total, message):
-        pct = int(rows / total * 100) if total > 0 else 50
+        pct = min(int(rows / total * 100), 100) if total > 0 else 50
         payload = json.dumps({"stage": stage, "rows": rows, "pct": pct, "message": message})
         asyncio.run_coroutine_threadsafe(queue.put(payload), loop)
 
@@ -201,7 +201,14 @@ async def refresh_mtga_card_db(request: Request):
             db.commit()
             apply_errata(db)
             invalidate_filter_options_cache()
-            await queue.put(json.dumps({"stage": "done", "pct": 100, "status": "mtga_ok", "message": "MTGA Card Database updated successfully."}))
+            missing = count_missing_scryfall(db)
+            msg = (
+                f"MTGA Card Database updated successfully. {missing} cards still "
+                f"missing Scryfall data (errata needed)."
+                if missing
+                else "MTGA Card Database updated successfully. 0 cards missing Scryfall data."
+            )
+            await queue.put(json.dumps({"stage": "done", "pct": 100, "status": "mtga_ok", "message": msg}))
         except Exception as e:
             await queue.put(json.dumps({"stage": "done", "pct": 0, "status": "mtga_err", "message": str(e)}))
 
@@ -306,7 +313,6 @@ async def refresh_scryfall(request: Request):
                 )
             )
             await asyncio.get_event_loop().run_in_executor(None, lambda: backfill_rebalanced_images(db))
-            await asyncio.get_event_loop().run_in_executor(None, lambda: enrich_missing_from_api(db, _progress))
             await asyncio.get_event_loop().run_in_executor(
                 None, lambda: populate_set_info_from_scryfall(db)
             )
@@ -317,7 +323,14 @@ async def refresh_scryfall(request: Request):
             apply_errata(db)
             invalidate_set_info_cache()
             invalidate_filter_options_cache()
-            await queue.put(json.dumps({"stage": "done", "pct": 100, "status": "scryfall_ok", "message": "Scryfall data updated successfully."}))
+            missing = count_missing_scryfall(db)
+            msg = (
+                f"Scryfall data updated successfully. {missing} cards still "
+                f"missing Scryfall data (errata needed)."
+                if missing
+                else "Scryfall data updated successfully. 0 cards missing Scryfall data."
+            )
+            await queue.put(json.dumps({"stage": "done", "pct": 100, "status": "scryfall_ok", "message": msg}))
         except Exception as e:
             await queue.put(json.dumps({"stage": "done", "pct": 0, "status": "scryfall_err", "message": str(e)}))
 

@@ -187,13 +187,14 @@ WHERE arena_id = ?
 
 ---
 
-**Source 2b — Scryfall API Fallback**
+**Source 2b — Scryfall API Fallback (opt-in only)**
 
 | Aspect | Detail |
 |---|---|
 | File | `ingest.py: enrich_missing_from_api()` |
 | Endpoint | `https://api.scryfall.com/cards/named?exact={NAME}` |
 
+- NOT part of the default pipeline — only runs with `--api-enrich` in `ingest_cli.py`
 - Fetches cards that bulk ingest missed (set code mismatches where even tier 4 failed)
 - One card at a time with 100ms sleep between requests (rate limiting)
 - Usually handles ~200–300 cards, ~100ms each
@@ -231,7 +232,7 @@ Scryfall has no separate entries for Alchemy rebalanced variants — copies imag
 **Phases:**
 1. Database init — `init_db()` (schema + indexes)
 2. Native CardDB load — `DELETE FROM cards` (fresh start) + `ingest_mtga_card_db()`
-3. Scryfall enrichment — download (if needed) + `ingest_scryfall()` + `backfill_rebalanced_images()` + `enrich_missing_from_api()` + `populate_set_info_from_scryfall()`
+3. Scryfall enrichment — download (if needed) + `ingest_scryfall()` + `backfill_rebalanced_images()` + `populate_set_info_from_scryfall()` (+ `enrich_missing_from_api()` only with `--api-enrich`)
 4. Collection upsert — `upsert_collection()`
 5. Wallet snapshot — `capture_wallet_snapshot()`
 6. Errata — `apply_errata()` + summary

@@ -8,6 +8,8 @@ from fastapi.responses import FileResponse
 
 router = APIRouter()
 
+USER_AGENT = "mtga-browser/1.0"
+
 IMAGE_CACHE = Path.home() / ".cache" / "mtga" / "images"
 IMAGE_CACHE.mkdir(parents=True, exist_ok=True)
 
@@ -45,7 +47,7 @@ async def proxy_image(arena_id: int, request: Request):
 
     if not cache_path.exists():
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.get(row["image_uri_front"], follow_redirects=True)
+            resp = await client.get(row["image_uri_front"], follow_redirects=True, headers={"User-Agent": USER_AGENT})
             resp.raise_for_status()
             cache_path.write_bytes(resp.content)
 
@@ -91,7 +93,7 @@ async def proxy_image_back(arena_id: int, request: Request):
 
     if not cache_path.exists():
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.get(row["image_uri_back"], follow_redirects=True)
+            resp = await client.get(row["image_uri_back"], follow_redirects=True, headers={"User-Agent": USER_AGENT})
             resp.raise_for_status()
             cache_path.write_bytes(resp.content)
 

@@ -121,6 +121,10 @@ def build_card_query(
     conditions: list[str] = []
     params: list[Any] = []
 
+    # Base set = current MTGA CardDB only; hide cards that left MTGA or legacy
+    # scryfall-only rows.
+    conditions.append("c.is_active = 1")
+
     if name:
         conditions.append("c.name LIKE ?")
         params.append(f"%{name}%")
@@ -410,12 +414,12 @@ def get_filter_options(db) -> dict:
     set_rows = db.execute("""
         WITH booster_sets AS (
             SELECT set_code FROM cards
-            WHERE is_rebalanced = 0 AND rarity NOT IN ('basic') AND booster = 1
+            WHERE is_rebalanced = 0 AND rarity NOT IN ('basic') AND booster = 1 AND is_active = 1
             GROUP BY set_code HAVING COUNT(*) >= 50
         )
         SELECT c.set_code, COUNT(DISTINCT c.arena_id) AS total_cards, MAX(c.arena_id) AS max_arena_id
         FROM cards c
-        WHERE c.is_rebalanced = 0 AND c.rarity NOT IN ('basic')
+        WHERE c.is_rebalanced = 0 AND c.rarity NOT IN ('basic') AND c.is_active = 1
           AND (c.booster = 1 OR c.set_code NOT IN (SELECT set_code FROM booster_sets))
         GROUP BY c.set_code
         HAVING total_cards >= 50
@@ -434,6 +438,7 @@ def get_filter_options(db) -> dict:
         SELECT DISTINCT value AS kw
         FROM cards, json_each(cards.keywords)
         WHERE cards.keywords IS NOT NULL AND length(cards.keywords) > 2
+          AND cards.is_active = 1
         ORDER BY value
     """).fetchall()
     kw_list = [row["kw"] for row in keyword_rows]
@@ -442,6 +447,7 @@ def get_filter_options(db) -> dict:
     creature_rows = db.execute("""
         SELECT DISTINCT type_line FROM cards
         WHERE type_line LIKE '%Creature%' AND type_line LIKE '%—%'
+          AND is_active = 1
     """).fetchall()
     subtypes: set[str] = set()
     for row in creature_rows:

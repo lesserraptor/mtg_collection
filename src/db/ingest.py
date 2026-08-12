@@ -4,6 +4,8 @@ Provides get_bulk_download_uri(), download_bulk(), ingest_scryfall(),
 _extract_image_uris(), and _card_to_rows() for the MTGA collection browser.
 """
 
+import gzip
+import io
 import json
 import sqlite3
 import sys
@@ -44,28 +46,19 @@ ENRICH_CARD_SQL = """
     WHERE arena_id = ?
 """
 
-# Insert for cards Scryfall knows that native CardDB does not have.
-# INSERT OR IGNORE ensures existing native rows are never replaced.
-INSERT_NEW_CARD_SQL = """
-    INSERT OR IGNORE INTO cards (
-        arena_id, scryfall_id, name, mana_cost, cmc, type_line, oracle_text,
-        rarity, set_code, collector_number, colors, color_identity, keywords,
-        layout, image_uri_front, image_uri_back, is_rebalanced, booster
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-"""
-
 
 def get_bulk_download_uri(bulk_type: str = SCRYFALL_BULK_TYPE) -> str:
     """Fetch the download URI for the given bulk data type from Scryfall index.
 
     Args:
-        bulk_type: Scryfall bulk data type name. Defaults to "default_cards".
+        bulk_type: Scryfall bulk data type name. Defaults to "all_cards".
 
     Returns:
-        The download_uri string for the matching bulk data entry.
+        The download URI string for the matching bulk data entry.
 
     Raises:
-        ValueError: If no entry matches the given bulk_type.
+        ValueError: If no entry matches the given bulk_type, or the matched
+            entry has no usable download URI.
         requests.HTTPError: If the Scryfall index request fails.
     """
     resp = requests.get(
@@ -77,7 +70,16 @@ def get_bulk_download_uri(bulk_type: str = SCRYFALL_BULK_TYPE) -> str:
     data = resp.json()
     for entry in data.get("data", []):
         if entry.get("type") == bulk_type:
-            return entry["download_uri"]
+            # Scryfall switched from JSON archives to gzipped JSONL files in
+            # 2026: the download URL is now `jsonl_download_uri`. Accept the
+            # legacy `download_uri` too so old API responses keep working.
+            uri = entry.get("jsonl_download_uri") or entry.get("download_uri")
+            if not uri:
+                raise ValueError(
+                    f"Scryfall bulk data entry type={bulk_type!r} has no download "
+                    f"URI (available keys: {sorted(entry)})"
+                )
+            return uri
     raise ValueError(
         f"No Scryfall bulk data entry found with type={bulk_type!r}"
     )
@@ -88,6 +90,11 @@ def download_bulk(uri: str, dest_path: Path, progress: bool = True, progress_cal
 
     Never loads the full file into memory. Prints a dot to stderr every 10 MB
     when progress=True so stdout is not polluted.
+
+    Scryfall serves bulk files as gzipped JSONL (.jsonl.gz). The gzip layer is
+    decompressed on the fly so dest_path holds plain JSONL, which
+    ingest_scryfall() streams line-by-line. Legacy plain-JSON URIs (pre-2026)
+    are written through unchanged.
 
     Args:
         uri: Direct download URI for the bulk data file.
@@ -110,18 +117,29 @@ def download_bulk(uri: str, dest_path: Path, progress: bool = True, progress_cal
     )
     resp.raise_for_status()
 
+    # Decompress gzip on the fly. Disable urllib3's automatic content decoding
+    # so we always read the raw bytes; if the response were HTTP-compressed too
+    # (Content-Encoding: gzip), ingest_scryfall() still re-detects gzip via the
+    # magic bytes, so double-wrapping self-heals.
+    resp.raw.decode_content = False
+    source = resp.raw
+    if uri.lower().endswith(".gz"):
+        source = gzip.GzipFile(fileobj=source)
+
     bytes_written = 0
     dot_threshold = 10 * 1024 * 1024  # 10 MB
     next_dot = dot_threshold
 
     with dest_path.open("wb") as f:
-        for chunk in resp.iter_content(chunk_size=65536):
-            if chunk:
-                f.write(chunk)
-                bytes_written += len(chunk)
-                if progress and bytes_written >= next_dot:
-                    print(".", end="", flush=True, file=sys.stderr)
-                    next_dot += dot_threshold
+        while True:
+            chunk = source.read(65536)
+            if not chunk:
+                break
+            f.write(chunk)
+            bytes_written += len(chunk)
+            if progress and bytes_written >= next_dot:
+                print(".", end="", flush=True, file=sys.stderr)
+                next_dot += dot_threshold
 
     if progress:
         print(file=sys.stderr)  # newline after dots
@@ -186,20 +204,18 @@ def _extract_oracle_text(card: dict) -> str | None:
     return faces[0].get("oracle_text")
 
 
-def _card_to_rows(card: dict) -> tuple[tuple, tuple]:
-    """Convert a Scryfall card dict to two tuples for enrichment and insert.
+def _card_to_rows(card: dict) -> tuple:
+    """Convert a Scryfall card dict to an enrichment row for ENRICH_CARD_SQL.
 
     Returns:
-        (enrich_tuple, insert_tuple) where:
-        - enrich_tuple matches ENRICH_CARD_SQL params:
+        Tuple matching ENRICH_CARD_SQL params:
           scryfall_id, mana_cost, cmc, type_line, oracle_text, rarity,
           set_code, collector_number, colors, color_identity, keywords,
           layout, image_uri_front, image_uri_back, booster, arena_id
-        - insert_tuple matches INSERT_NEW_CARD_SQL params (18 elements):
-          arena_id, scryfall_id, name, mana_cost, cmc, type_line,
-          oracle_text, rarity, set_code, collector_number, colors,
-          color_identity, keywords, layout, image_uri_front,
-          image_uri_back, is_rebalanced, booster
+
+    Base set of cards = native MTGA CardDB (see mtga_card_db.py). Scryfall only
+    ENRICHES existing rows via UPDATE; it never inserts new cards, so no insert
+    tuple is produced.
 
     Args:
         card: A Scryfall card dict. Caller must ensure arena_id is non-null.
@@ -207,7 +223,6 @@ def _card_to_rows(card: dict) -> tuple[tuple, tuple]:
     images = _extract_image_uris(card)
     arena_id = card["arena_id"]
     scryfall_id = card.get("id")
-    name = card.get("name")
     # For DFCs (transform, modal_dfc, etc.), mana_cost is None at the top level
     # and lives in card_faces[0] for the front face. Oracle text needs layout-aware
     # handling: split/adventure/flip cards expose both halves simultaneously and
@@ -248,28 +263,7 @@ def _card_to_rows(card: dict) -> tuple[tuple, tuple]:
         arena_id,  # WHERE clause — must be last
     )
 
-    insert_tuple = (
-        arena_id,
-        scryfall_id,
-        name,
-        mana_cost,
-        cmc,
-        type_line,
-        oracle_text,
-        rarity,
-        set_code,
-        collector_number,
-        colors,
-        color_identity,
-        keywords,
-        layout,
-        image_front,
-        image_back,
-        0,           # is_rebalanced: CardDatabase is authoritative
-        booster,
-    )
-
-    return enrich_tuple, insert_tuple
+    return enrich_tuple
 
 
 _BASIC_LAND_NAMES = {"Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes"}
@@ -303,6 +297,38 @@ def _set_cn_match_ok(scryfall_name: str, src_name: str) -> bool:
     return True  # flavor name difference — accept
 
 
+def _open_bulk_stream(json_path: Path) -> io.BufferedReader:
+    """Open a Scryfall bulk file, transparently gunzipping if needed.
+
+    Returns a buffered binary reader positioned at the start of the
+    decompressed content (a JSON array in the legacy format, or JSONL now).
+    """
+    raw = json_path.open("rb")
+    if raw.read(2) == b"\x1f\x8b":
+        raw.seek(0)
+        raw = gzip.GzipFile(fileobj=raw)
+    else:
+        raw.seek(0)
+    return io.BufferedReader(raw)
+
+
+def _iter_card_dicts(stream: io.BufferedReader):
+    """Yield Scryfall card dicts from an open bulk file stream.
+
+    Handles both the legacy JSON-array format (pre-2026) and the current
+    gzipped JSONL format (one JSON object per line).
+    """
+    if stream.peek(1)[:1] == b"[":
+        for card in ijson.items(stream, "item"):
+            yield card
+        return
+    for line in stream:
+        line = line.strip()
+        if not line:
+            continue
+        yield json.loads(line.decode("utf-8"))
+
+
 def ingest_scryfall(
     json_path: Path,
     conn: sqlite3.Connection,
@@ -314,10 +340,12 @@ def ingest_scryfall(
     rebalanced_id_map: dict | None = None,
     progress_callback=None,
 ) -> int:
-    """Stream-parse a Scryfall bulk JSON file and enrich Arena cards in SQLite.
+    """Stream-parse a Scryfall bulk file and enrich Arena cards in SQLite.
 
-    Opens the file in binary mode (required by ijson). Skips cards without
-    arena_id unless fallback maps resolve it:
+    Accepts the current gzipped JSONL format (`.jsonl.gz`, one card object per
+    line) and the legacy JSON-array format; see _open_bulk_stream() and
+    _iter_card_dicts(). Skips cards without arena_id unless fallback maps
+    resolve it:
       1. arena_id_map: (set_lower, collector_number) -> arena_id
       2. name_set_map: (card_name, set_lower) -> arena_id
       3. name_map: card_name -> arena_id (only unambiguous entries)
@@ -326,11 +354,12 @@ def ingest_scryfall(
     native CardDB is authoritative and A- entries cause duplicate art issues
     for the 66 arena_ids that have both A- and non-A- Scryfall entries.
 
-    For each resolved Arena card:
-    - If the card already exists (ingested from native CardDB): UPDATE to fill
-      image_uri, oracle_text, cmc, layout, type_line — native values win via
-      COALESCE (no overwrite of non-null native data).
-    - If the card does not exist in native CardDB: INSERT OR IGNORE as fallback.
+    Base set of cards = native MTGA CardDB (ingest_mtga_card_db). This pass
+    only ENRICHES existing rows via UPDATE — it never inserts new cards.
+    Enrichment fills image_uri, oracle_text, cmc, layout, type_line, etc.;
+    native CardDB values win via COALESCE (no overwrite of non-null native
+    data). Inactive rows may be updated harmlessly (the UPDATE never touches
+    is_active, so nothing is re-activated).
 
     Processes in batches of batch_size. Prints progress to stderr every 5000
     cards.
@@ -346,7 +375,7 @@ def ingest_scryfall(
             reject fallback matches where set codes collide across different sets.
 
     Returns:
-        Total number of rows processed (enriched or inserted).
+        Total number of rows processed (enriched).
     """
     json_path = Path(json_path)
     arena_id_map = arena_id_map or {}
@@ -355,7 +384,6 @@ def ingest_scryfall(
     src_name_by_id = src_name_by_id or {}
     rebalanced_id_map = rebalanced_id_map or {}
     enrich_batch = []
-    insert_batch = []
     total = 0
 
     # Tier 4 map: name_lower -> [arena_ids still lacking scryfall_id].
@@ -373,8 +401,8 @@ def ingest_scryfall(
             _t4.setdefault(_name.lower(), []).append(_aid)
     _t4_claimed: set[int] = set()
 
-    with json_path.open("rb") as f:
-        for card in ijson.items(f, "item"):
+    with _open_bulk_stream(json_path) as f:
+        for card in _iter_card_dicts(f):
             if card.get("lang") != "en":
                 continue
             arena_id = card.get("arena_id")
@@ -391,7 +419,18 @@ def ingest_scryfall(
                     continue
             if arena_id is None:
                 if "arena" not in card.get("games", []):
-                    continue
+                    # Non-arena-tagged printing: only skip if it cannot resolve to
+                    # any MTGA card via (set, cn), (name, set), or unambiguous name.
+                    cl = card.get("set", "").lower()
+                    cn = str(card.get("collector_number", ""))
+                    nm = card.get("name", "")
+                    resolvable = (
+                        (cl, cn) in arena_id_map
+                        or (nm, cl) in name_set_map
+                        or nm in name_map
+                    )
+                    if not resolvable:
+                        continue
                 name = card.get("name", "")
                 set_lower = card.get("set", "").lower()
                 cn = card.get("collector_number", "")
@@ -459,17 +498,14 @@ def ingest_scryfall(
                 else:
                     continue
 
-            enrich_row, insert_row = _card_to_rows(card)
+            enrich_row = _card_to_rows(card)
             enrich_batch.append(enrich_row)
-            insert_batch.append(insert_row)
 
             if len(enrich_batch) >= batch_size:
                 conn.executemany(ENRICH_CARD_SQL, enrich_batch)
-                conn.executemany(INSERT_NEW_CARD_SQL, insert_batch)
                 conn.commit()
                 total += len(enrich_batch)
                 enrich_batch = []
-                insert_batch = []
                 if total % 5000 == 0:
                     print(f"Processed {total} cards...", file=sys.stderr)
                 if progress_callback:
@@ -480,11 +516,36 @@ def ingest_scryfall(
         # Flush remaining batch
         if enrich_batch:
             conn.executemany(ENRICH_CARD_SQL, enrich_batch)
-            conn.executemany(INSERT_NEW_CARD_SQL, insert_batch)
             conn.commit()
             total += len(enrich_batch)
 
     return total
+
+
+def count_missing_scryfall(conn: sqlite3.Connection) -> int:
+    """Count active cards that still lack Scryfall data after a refresh.
+
+    Base set = native MTGA CardDB (is_active=1). Cards count as "missing" when
+    they have no scryfall_id and are not rebalanced variants. The 'ana' set
+    (Arena New Player Experience tutorial cards) is excluded by design — those
+    have no real Scryfall counterparts.
+
+    Args:
+        conn: Open sqlite3.Connection with the cards table present.
+
+    Returns:
+        Number of cards still missing Scryfall data.
+    """
+    row = conn.execute(
+        """
+        SELECT COUNT(*) FROM cards
+        WHERE is_active = 1
+          AND is_rebalanced = 0
+          AND (scryfall_id IS NULL OR scryfall_id = '')
+          AND set_code != 'ana'
+        """
+    ).fetchone()
+    return row[0] if row else 0
 
 
 def enrich_missing_from_api(
@@ -595,7 +656,15 @@ def backfill_rebalanced_images(conn) -> int:
                   AND std.scryfall_id != ''
                 LIMIT 1
             )
-        WHERE is_rebalanced = 1 AND (scryfall_id = '' OR scryfall_id IS NULL)
+        WHERE is_rebalanced = 1
+          AND (scryfall_id = '' OR scryfall_id IS NULL)
+          AND EXISTS (
+              SELECT 1 FROM cards std
+              WHERE std.set_code = cards.set_code
+                AND std.collector_number = cards.collector_number
+                AND std.is_rebalanced = 0
+                AND std.scryfall_id != ''
+          )
     """)
     conn.commit()
     return cursor.rowcount

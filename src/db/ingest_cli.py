@@ -23,6 +23,8 @@ Arguments:
     --skip-mtga-card-db    Skip native CardDB step (e.g. MTGA not installed)
     --skip-wallet          Skip wallet snapshot step
     --wallet-only          Only capture wallet snapshot (skip CardDB, Scryfall, collection, errata)
+    --api-enrich           Also fetch cards missed by bulk ingest one-by-one from the
+                           Scryfall API (OFF by default; slow, ~100ms per card)
 """
 
 import argparse
@@ -41,7 +43,7 @@ if _PROJECT_ROOT not in sys.path:
 
 from src.config import DATA_DIR
 from src.db.schema import DB_PATH, init_db
-from src.db.ingest import get_bulk_download_uri, download_bulk, ingest_scryfall, backfill_rebalanced_images, enrich_missing_from_api, populate_set_info_from_scryfall
+from src.db.ingest import get_bulk_download_uri, download_bulk, ingest_scryfall, backfill_rebalanced_images, enrich_missing_from_api, populate_set_info_from_scryfall, count_missing_scryfall
 from src.db.mtga_card_db import find_card_db, ingest_mtga_card_db
 from src.collection import find_collection_file, upsert_collection
 from src.db.errata import apply_errata
@@ -99,6 +101,14 @@ def main() -> None:
         "--wallet-only",
         action="store_true",
         help="Only capture wallet snapshot (skip CardDB, Scryfall, collection, errata)",
+    )
+    parser.add_argument(
+        "--api-enrich",
+        action="store_true",
+        help=(
+            "Also fetch cards missed by bulk ingest one-by-one from the Scryfall API "
+            "(off by default; performs one HTTP request per card with 100ms throttling)"
+        ),
     )
 
     args = parser.parse_args()
@@ -226,8 +236,11 @@ def main() -> None:
     backfilled = backfill_rebalanced_images(conn)
     print(f"      Backfilled images for {backfilled} rebalanced cards (no Scryfall A- entry).")
 
-    api_enriched = enrich_missing_from_api(conn)
-    print(f"      API-enriched {api_enriched} cards missed by bulk ingest (set code mismatch).")
+    if args.api_enrich:
+        api_enriched = enrich_missing_from_api(conn)
+        print(f"      API-enriched {api_enriched} cards missed by bulk ingest (--api-enrich).")
+    else:
+        api_enriched = 0
 
     set_info_count = populate_set_info_from_scryfall(conn)
     print(f"      Populated {set_info_count} set metadata entries.")
@@ -280,6 +293,9 @@ def main() -> None:
     if args.wallet_only:
         print("[6/6] Skipping errata (--wallet-only).")
 
+    missing_scryfall = count_missing_scryfall(conn) if not args.wallet_only else 0
+    print(f"      {missing_scryfall} active card(s) still missing Scryfall data (excl. 'ana').")
+
     print()
     print("=== Ingest complete ===")
     print(f"  MTGA native cards:  {mtga_count}")
@@ -287,6 +303,7 @@ def main() -> None:
     print(f"  Collection rows:    {collection_count}")
     print(f"  Wallet captured:    {wallet_captured}")
     print(f"  Errata applied:     {errata_count}")
+    print(f"  Missing Scryfall:   {missing_scryfall} (excl. 'ana')")
     print(f"  DB path:            {args.db}")
     conn.close()
 

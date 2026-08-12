@@ -25,7 +25,7 @@ router = APIRouter()
 SET_LIST_SQL = """
     WITH booster_sets AS (
         SELECT set_code FROM cards
-        WHERE is_rebalanced = 0 AND rarity NOT IN ('basic') AND booster = 1
+        WHERE is_rebalanced = 0 AND rarity NOT IN ('basic') AND booster = 1 AND is_active = 1
         GROUP BY set_code HAVING COUNT(*) >= 50
     )
     SELECT
@@ -51,6 +51,7 @@ SET_LIST_SQL = """
     FROM cards c
     LEFT JOIN collection col ON col.arena_id = c.arena_id
     WHERE c.is_rebalanced = 0 AND c.rarity NOT IN ('basic')
+      AND c.is_active = 1
       AND (c.booster = 1 OR c.set_code NOT IN (SELECT set_code FROM booster_sets))
     GROUP BY c.set_code
     HAVING total_cards >= 50
@@ -70,6 +71,7 @@ SET_DETAIL_SQL = """
     LEFT JOIN collection col ON col.arena_id = c.arena_id
     WHERE LOWER(c.set_code) = LOWER(?)
       AND c.is_rebalanced = 0
+      AND c.is_active = 1
       AND c.rarity NOT IN ('basic')
       AND (? = 0 OR c.booster = 1)
     GROUP BY c.rarity
@@ -111,6 +113,7 @@ MISSING_CARDS_SQL = """
     LEFT JOIN deck_demand dd ON dd.name_lower = LOWER(c.name)
     WHERE LOWER(c.set_code) = LOWER(?)
       AND c.is_rebalanced = 0
+      AND c.is_active = 1
       AND c.rarity NOT IN ('basic')
       AND (? = 0 OR c.booster = 1)
       AND COALESCE(col.quantity, 0) < 4
@@ -148,7 +151,8 @@ def _set_is_booster_backed(db, set_code: str) -> bool:
     row = db.execute(
         "SELECT COUNT(*) AS n FROM cards "
         "WHERE LOWER(set_code) = LOWER(?) "
-        "  AND is_rebalanced = 0 AND rarity NOT IN ('basic') AND booster = 1",
+        "  AND is_rebalanced = 0 AND rarity NOT IN ('basic') AND booster = 1 "
+        "  AND is_active = 1",
         (set_code,),
     ).fetchone()
     return (row["n"] if row else 0) >= _BOOSTER_SET_THRESHOLD
