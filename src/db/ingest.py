@@ -329,6 +329,29 @@ def _iter_card_dicts(stream: io.BufferedReader):
         yield json.loads(line.decode("utf-8"))
 
 
+def _is_variant_match(entry_set: str, entry_cn: str, db_row) -> bool:
+    """Reject a same-set variant printing (different collector number) that
+    shares a name with the DB card, e.g. Starter Collection reprints that
+    otherwise clobber the base card via name-based fallback tiers."""
+    if db_row is None:
+        return False
+    # Never reject alchemy-rebalanced entries; they are handled separately via
+    # rebalanced_id_map and reach the name tiers before the A- block.
+    if entry_cn.startswith("A-"):
+        return False
+    db_set, db_cn = db_row
+    if entry_set != db_set:
+        return False
+    # Same set, different collector number -> variant printing of the same card.
+    # Treat leading-zero differences as the same number ("012" == "12").
+    if entry_cn == db_cn:
+        return False
+    try:
+        return int(entry_cn) != int(db_cn)
+    except ValueError:
+        return True
+
+
 def ingest_scryfall(
     json_path: Path,
     conn: sqlite3.Connection,
@@ -338,14 +361,18 @@ def ingest_scryfall(
     name_map: dict | None = None,
     src_name_by_id: dict | None = None,
     rebalanced_id_map: dict | None = None,
+    src_setcn_by_id: dict | None = None,
     progress_callback=None,
 ) -> int:
     """Stream-parse a Scryfall bulk file and enrich Arena cards in SQLite.
 
     Accepts the current gzipped JSONL format (`.jsonl.gz`, one card object per
     line) and the legacy JSON-array format; see _open_bulk_stream() and
-    _iter_card_dicts(). Skips cards without arena_id unless fallback maps
-    resolve it:
+    _iter_card_dicts(). Only printings that exist in Arena (those whose
+    `games` list contains "arena") are ever matched — paper-only printings
+    (promos, showcase, etc.) that share a name with an Arena card are skipped
+    so they cannot clobber booster / scryfall_id / images with non-Arena
+    values. Skips cards without arena_id unless fallback maps resolve it:
       1. arena_id_map: (set_lower, collector_number) -> arena_id
       2. name_set_map: (card_name, set_lower) -> arena_id
       3. name_map: card_name -> arena_id (only unambiguous entries)
@@ -373,6 +400,10 @@ def ingest_scryfall(
         name_map: Dict mapping card name to arena_id for unambiguous names only.
         src_name_by_id: Dict mapping arena_id to source DB card name, used to
             reject fallback matches where set codes collide across different sets.
+        src_setcn_by_id: Dict mapping arena_id to (set_code_lower,
+            collector_number), used to reject same-set variant printings
+            (different collector number, e.g. Starter Collection reprints) that
+            share a name with the base card.
 
     Returns:
         Total number of rows processed (enriched).
@@ -383,6 +414,7 @@ def ingest_scryfall(
     name_map = name_map or {}
     src_name_by_id = src_name_by_id or {}
     rebalanced_id_map = rebalanced_id_map or {}
+    src_setcn_by_id = src_setcn_by_id or {}
     enrich_batch = []
     total = 0
 
@@ -405,6 +437,12 @@ def ingest_scryfall(
         for card in _iter_card_dicts(f):
             if card.get("lang") != "en":
                 continue
+            # Only match printings that exist in Arena. Scryfall's bulk data includes
+            # paper-only printings (promos, showcase, etc.) that share a name with an
+            # MTGA card; matching them by name would clobber booster / scryfall_id /
+            # images with non-Arena values (e.g. pdsk promos set booster=0 on DSK rares).
+            if "arena" not in card.get("games", []):
+                continue
             arena_id = card.get("arena_id")
             # Guard: Scryfall sometimes maps a basic land arena_id to the wrong
             # land type (e.g. LCI CN=400 arena_id=87461 is a Mountain in Scryfall
@@ -418,19 +456,6 @@ def ingest_scryfall(
                         and db_name in _BASIC_LAND_NAMES):
                     continue
             if arena_id is None:
-                if "arena" not in card.get("games", []):
-                    # Non-arena-tagged printing: only skip if it cannot resolve to
-                    # any MTGA card via (set, cn), (name, set), or unambiguous name.
-                    cl = card.get("set", "").lower()
-                    cn = str(card.get("collector_number", ""))
-                    nm = card.get("name", "")
-                    resolvable = (
-                        (cl, cn) in arena_id_map
-                        or (nm, cl) in name_set_map
-                        or nm in name_map
-                    )
-                    if not resolvable:
-                        continue
                 name = card.get("name", "")
                 set_lower = card.get("set", "").lower()
                 cn = card.get("collector_number", "")
@@ -459,6 +484,10 @@ def ingest_scryfall(
                             src_name = src_name_by_id.get(arena_id)
                             if src_name and not _names_match(name, src_name):
                                 arena_id = None
+                            if _is_variant_match(
+                                set_lower, cn, src_setcn_by_id.get(arena_id)
+                            ):
+                                arena_id = None
 
                 # Tier 4: name-only match against DB cards still lacking scryfall_id.
                 # Handles set-code mismatches (Alchemy year codes, collaboration
@@ -473,8 +502,13 @@ def ingest_scryfall(
                     if len(candidates) == 1:
                         src_name = src_name_by_id.get(candidates[0])
                         if not src_name or _names_match(name, src_name):
-                            arena_id = candidates[0]
-                            _t4_claimed.add(arena_id)
+                            if _is_variant_match(
+                                set_lower, cn, src_setcn_by_id.get(candidates[0])
+                            ):
+                                arena_id = None
+                            else:
+                                arena_id = candidates[0]
+                                _t4_claimed.add(arena_id)
 
                 if arena_id is None:
                     continue
@@ -591,6 +625,12 @@ def enrich_missing_from_api(
             if resp.status_code != 200:
                 continue
             card = resp.json()
+            # The named endpoint can return a paper-only printing (promos, showcase,
+            # etc.) that shares a name with an Arena card. Matching it would clobber
+            # booster / scryfall_id / images with non-Arena values, so only accept
+            # printings that exist in Arena.
+            if "arena" not in card.get("games", []):
+                continue
             images = _extract_image_uris(card)
             front_face = (card.get("card_faces") or [{}])[0]
             conn.execute(ENRICH_CARD_SQL, (

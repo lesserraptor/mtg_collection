@@ -191,6 +191,9 @@ async def startup():
         else ['gihwr', 'ohwr', 'iwd', 'gwr', 'ata', 'alsa']
     )
 
+    _mock = app.state.db.execute("SELECT value FROM meta WHERE key='mock_draft'").fetchone()
+    app.state.mock_draft_enabled = (_mock[0] == "1") if _mock else False
+
     # Initial scan for completed draft results from Player.log
     try:
         from src.draft.results_importer import scan_draft_results_from_log

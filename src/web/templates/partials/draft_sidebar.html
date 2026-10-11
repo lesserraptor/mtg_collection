@@ -9,6 +9,18 @@
       <button type="submit" style="width:100%; background:#3a1a1a; color:#fca5a5; border:1px solid #ef4444; padding:0.4rem 1rem; border-radius:4px; cursor:pointer; font-size:0.85rem;">&#9632; Stop Listening</button>
     </form>
     {% endif %}
+    <div style="margin-top:0.5rem;">
+      <button type="button"
+        hx-post="/draft/mock/toggle"
+        hx-target="#draft-sidebar"
+        hx-swap="outerHTML"
+        style="width:100%; padding:0.35rem 1rem; border-radius:4px; cursor:pointer; font-size:0.8rem; background:{% if mock_draft %}#1a3a2e{% else %}transparent{% endif %}; color:{% if mock_draft %}#86efac{% else %}#888{% endif %}; border:1px solid {% if mock_draft %}#22c55e{% else %}#333{% endif %};">
+        {% if mock_draft %}&#9679; Mock draft: ON{% else %}Mock draft: OFF{% endif %}
+      </button>
+      {% if mock_draft %}
+      <div style="font-size:0.7rem; color:#6ee7b7; margin-top:0.25rem;">Listening to data/Player.log (run scripts/mock_draft_log.py)</div>
+      {% endif %}
+    </div>
     {% if scan_error %}
     <div style="color:#f87171; font-size:0.8rem; margin-top:0.4rem;">{{ scan_error }}</div>
     {% endif %}

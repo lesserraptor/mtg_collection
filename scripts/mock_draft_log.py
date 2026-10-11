@@ -40,30 +40,57 @@ parser.add_argument(
     default="quick",
     help="Draft format to simulate (default: quick)",
 )
+parser.add_argument(
+    "--auto",
+    action="store_true",
+    help="Run automatically without waiting for Enter (for CI/testing)",
+)
 args = parser.parse_args()
 SET_CODE = args.set_code.lower()
+AUTO_MODE = args.auto
 
 
-def get_cards(set_code: str) -> list[int]:
+def get_cards_by_rarity(set_code: str) -> dict[str, list[int]]:
     db = sqlite3.connect(str(DB_PATH))
     rows = db.execute(
-        "SELECT arena_id FROM cards WHERE set_code = ? ORDER BY arena_id",
+        "SELECT arena_id, rarity FROM cards WHERE set_code = ? AND rarity IN ('mythic', 'rare', 'uncommon', 'common')",
         (set_code,),
     ).fetchall()
     db.close()
-    ids = [r[0] for r in rows]
-    if not ids:
-        print(f"Error: no cards found for set '{set_code}' in {DB_PATH}", file=sys.stderr)
-        sys.exit(1)
-    return ids
+    by_rarity: dict[str, list[int]] = {"mythic": [], "rare": [], "uncommon": [], "common": []}
+    for arena_id, rarity in rows:
+        r = rarity.lower()
+        if r in by_rarity:
+            by_rarity[r].append(arena_id)
+    for r in by_rarity:
+        if not by_rarity[r]:
+            print(f"Warning: no {r} cards found for set '{set_code}'", file=sys.stderr)
+    return by_rarity
 
 
-def build_packs(arena_ids: list[int]) -> list[list[int]]:
-    if len(arena_ids) >= 42:
-        sampled = random.sample(arena_ids, 42)
-    else:
-        sampled = random.choices(arena_ids, k=42)
-    return [sampled[0:14], sampled[14:28], sampled[28:42]]
+def build_packs(by_rarity: dict[str, list[int]]) -> list[list[int]]:
+    """Build 3 packs, each with 1 mythic, 1 rare, 3 uncommons, 9 commons."""
+    packs = []
+    for _ in range(3):
+        pack = []
+        # 1 mythic
+        if by_rarity["mythic"]:
+            pack.append(random.choice(by_rarity["mythic"]))
+        # 1 rare
+        if by_rarity["rare"]:
+            pack.append(random.choice(by_rarity["rare"]))
+        # 3 uncommons
+        for _ in range(3):
+            if by_rarity["uncommon"]:
+                pack.append(random.choice(by_rarity["uncommon"]))
+        # 9 commons
+        for _ in range(9):
+            if by_rarity["common"]:
+                pack.append(random.choice(by_rarity["common"]))
+        # shuffle within pack
+        random.shuffle(pack)
+        packs.append(pack)
+    return packs
 
 
 def write(line: str):
@@ -72,7 +99,7 @@ def write(line: str):
 
 
 # ---------------------------------------------------------------------------
-# Existing Quick Draft emit functions (Shape C + BotDraft pick)
+# Quick Draft emit functions (Shape C + BotDraft pick)
 # ---------------------------------------------------------------------------
 
 def emit_pack(pack_cards: list[int], pack_num: int, pick_num: int, event_name: str):
@@ -197,10 +224,14 @@ def emit_picktwo_complete(event_name: str):
 # ---------------------------------------------------------------------------
 
 def main():
-    arena_ids = get_cards(SET_CODE)
-    print(f"Loaded {len(arena_ids)} {SET_CODE.upper()} cards from DB")
+    by_rarity = get_cards_by_rarity(SET_CODE)
+    total = sum(len(v) for v in by_rarity.values())
+    print(f"Loaded {total} {SET_CODE.upper()} cards from DB")
+    for r, ids in by_rarity.items():
+        print(f"  {r}: {len(ids)}")
 
-    packs = build_packs(arena_ids)
+    packs = build_packs(by_rarity)
+    # Deep copy for mutation
     pack_states = [list(p) for p in packs]
 
     fmt = args.fmt
@@ -222,7 +253,9 @@ def main():
     print(f"Log file: {LOG_PATH.resolve()}")
     print(f"Event:    {event_name}  format={fmt}")
     print()
-    input("Press Enter to start the draft...")
+
+    if not AUTO_MODE:
+        input("Press Enter to start the draft...")
 
     # Emit start event
     if fmt == "quick":
@@ -236,58 +269,74 @@ def main():
     elif fmt == "picktwo":
         emit_picktwo_start(event_name)
 
-    pack_idx = 0
-    pick_num = 0
-
-    # Emit first pack
-    if fmt == "quick":
-        emit_pack(pack_states[0], pack_num=0, pick_num=0, event_name=event_name)
-    elif fmt in ("premier", "traditional"):
-        emit_shape_a(pack_states[0], pack_num=0, pick_num=0)
-    elif fmt == "autopick":
-        pass  # handled in loop
-    elif fmt == "picktwo":
-        emit_shape_b(pack_states[0], pack_num=0, pick_num=0)
-        print(f"  pack 1 pick 1 → {len(pack_states[0])} cards offered (Shape B)")
-
+    # Round-robin pick order: P1P1, P2P1, P3P1, P1P2, P2P2, P3P2, ...
+    # We'll iterate through packs in round-robin fashion
     total_picks = sum(len(p) for p in packs)
     picks_made = 0
-    picktwo_picks_per_pack = 7  # 14 cards per pack, 2 picked per pick
+
+    # Track pick index per pack
+    pick_indices = [0, 0, 0]
 
     if fmt == "picktwo":
-        total_picks = picktwo_picks_per_pack * 3
+        # Pick Two: 2 cards per pick, 7 picks per pack
+        total_picks = 7 * 3
 
-    print(f"\n{total_picks} picks total. Press Enter to pick + see next pack (Ctrl+C to quit).\n")
+    print(f"\n{total_picks} picks total. ", end="")
+    if AUTO_MODE:
+        print("Auto mode — running all picks...")
+    else:
+        print("Press Enter for each pick (Ctrl+C to quit).")
+    print()
 
-    while True:
-        try:
-            input()
-        except (KeyboardInterrupt, EOFError):
-            print("\nStopped.")
-            break
+    # Emit first round of packs (P1P1, P2P1, P3P1)
+    for pack_idx in range(3):
+        if fmt == "quick":
+            emit_pack(pack_states[pack_idx], pack_num=pack_idx, pick_num=0, event_name=event_name)
+        elif fmt in ("premier", "traditional"):
+            if pack_idx == 0:
+                emit_shape_a(pack_states[pack_idx], pack_num=pack_idx, pick_num=0)
+            else:
+                emit_shape_b(pack_states[pack_idx], pack_num=pack_idx, pick_num=0)
+        elif fmt == "autopick":
+            # autopick emits combined in loop
+            pass
+        elif fmt == "picktwo":
+            emit_shape_b(pack_states[pack_idx], pack_num=pack_idx, pick_num=0)
+            print(f"  pack {pack_idx + 1} pick 1 → {len(pack_states[pack_idx])} cards offered (Shape B)")
+
+    round_num = 0
+    while picks_made < total_picks:
+        if not AUTO_MODE:
+            try:
+                input()
+            except (KeyboardInterrupt, EOFError):
+                print("\nStopped.")
+                break
+
+        # Round-robin: pack 0, 1, 2, 0, 1, 2, ...
+        pack_idx = round_num % 3
+        pick_idx = pick_indices[pack_idx]
 
         current_pack = pack_states[pack_idx]
 
         if fmt == "picktwo":
             # Pick Two: pop two cards at once
             if len(current_pack) < 2:
-                pack_idx += 1
-                pick_num = 0
-                if pack_idx >= len(packs):
-                    emit_picktwo_complete(event_name)
-                    print("Draft complete.")
-                    break
-                current_pack = pack_states[pack_idx]
+                round_num += 1
+                continue
             picked_a = current_pack.pop(0)
             picked_b = current_pack.pop(0)
             picks_made += 1
-            pick_num += 1
-            emit_picktwo_picks([picked_a, picked_b], pack=pack_idx, pick=pick_num)
-            print(f"  P{pack_idx + 1} P{pick_num}: picked {picked_a}, {picked_b}")
+            pick_indices[pack_idx] += 1
+            emit_picktwo_picks([picked_a, picked_b], pack=pack_idx, pick=pick_idx)
+            print(f"  P{pack_idx + 1} P{pick_idx + 1}: picked {picked_a}, {picked_b}")
         else:
+            if not current_pack:
+                round_num += 1
+                continue
             picked = current_pack.pop(0)
             picks_made += 1
-            pick_num += 1
+            pick_indices[pack_idx] += 1
 
             if fmt == "quick":
                 emit_pick(picked)
@@ -297,29 +346,30 @@ def main():
                 emit_pick_v1(picked)
             # autopick: pick is embedded in shape D — no separate pick line
 
-        if not current_pack:
-            pack_idx += 1
-            pick_num = 0
-            if pack_idx >= len(packs):
-                if fmt != "picktwo":
-                    print("Draft complete.")
-                break
+            print(f"  P{pack_idx + 1} P{pick_idx + 1}: picked {picked}")
 
-        # Emit next pack
-        if fmt == "quick":
-            emit_pack(pack_states[pack_idx], pack_num=pack_idx, pick_num=pick_num, event_name=event_name)
-        elif fmt in ("premier", "traditional"):
-            if pack_idx == 0 and pick_num == 0:
-                emit_shape_a(pack_states[pack_idx], pack_num=pack_idx, pick_num=pick_num)
-            else:
-                emit_shape_b(pack_states[pack_idx], pack_num=pack_idx, pick_num=pick_num)
-        elif fmt == "autopick":
-            next_pack = pack_states[pack_idx]
-            next_picked = next_pack[0]  # preview — actual pop happens next loop
-            emit_shape_d(list(next_pack), next_picked, event_name, pack_idx, pick_num)
-        elif fmt == "picktwo":
-            emit_shape_b(pack_states[pack_idx], pack_num=pack_idx, pick_num=pick_num)
-            print(f"  pack {pack_idx + 1} pick 1 → {len(pack_states[pack_idx])} cards offered")
+        # Emit next pack for this pack_idx if cards remain
+        if current_pack:
+            next_pick_num = pick_indices[pack_idx]
+            if fmt == "quick":
+                emit_pack(current_pack, pack_num=pack_idx, pick_num=next_pick_num, event_name=event_name)
+            elif fmt in ("premier", "traditional"):
+                emit_shape_b(current_pack, pack_num=pack_idx, pick_num=next_pick_num)
+            elif fmt == "autopick":
+                next_picked = current_pack[0]
+                emit_shape_d(list(current_pack), next_picked, event_name, pack_idx, next_pick_num)
+            elif fmt == "picktwo":
+                emit_shape_b(current_pack, pack_num=pack_idx, pick_num=next_pick_num)
+                print(f"  pack {pack_idx + 1} pick {next_pick_num + 1} → {len(current_pack)} cards offered")
+        else:
+            # This pack exhausted
+            pass
+
+        round_num += 1
+
+    if fmt == "picktwo":
+        emit_picktwo_complete(event_name)
+    print("Draft complete.")
 
 
 if __name__ == "__main__":

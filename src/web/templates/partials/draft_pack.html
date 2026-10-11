@@ -4,7 +4,7 @@
 <p class="draft-idle">Draft started: {{ set_code }} &mdash; loading ratings...</p>
 {% else %}
 <div class="draft-pack-header" style="grid-column:1/-1">
-  Pack {{ pack_num }} &middot; Pick {{ pick_num }} &middot; {{ set_code }} {{ format }}
+  Pack {{ pack_num }} &middot; Pick {{ pick_num }} &middot; {{ set_code }} {{ format }} &middot; {{ metric_label }}
 </div>
 {% if not ratings_available %}
 <div style="grid-column:1/-1; color:#888; text-align:center; padding:0.75rem 1rem; font-size:0.85rem; border:1px solid #333; border-radius:4px; margin-bottom:0.5rem;">
@@ -59,10 +59,10 @@
       {% if pick_rank %}
       <div class="draft-rank rank-{{ pick_rank }}">{{ pick_rank }}</div>
       {% endif %}
-      <div class="draft-gihwr{% if pick_rank == 1 %} best{% elif pick_rank == 2 %} second{% elif pick_rank == 3 %} third{% endif %}">
+      <div class="draft-gihwr{% if pick_rank == 1 %} best{% elif pick_rank == 2 %} second{% elif pick_rank == 3 %} third{% endif %}{% if metric_val is none %} na{% endif %}">
         {% if metric_val is not none %}
           {% if metric_pct %}{{ "%.1f"|format(metric_val * 100) }}%{% else %}{{ "%.1f"|format(metric_val) }}{% endif %}
-        {% else %}—{% endif %}
+        {% else %}N/A{% endif %}
       </div>
     </div>
     <div class="rarity-stripe rarity-{{ card.rarity[0]|upper if card.rarity else 'C' }}"></div>

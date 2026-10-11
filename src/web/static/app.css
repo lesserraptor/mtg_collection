@@ -313,6 +313,13 @@ select.filter-input { cursor: pointer; }
 .draft-gihwr.third {
   color: #cd7f32;
 }
+.draft-gihwr.na {
+  color: #6b7280;
+  font-weight: 400;
+  font-style: italic;
+  text-decoration: line-through;
+  opacity: 0.8;
+}
 
 .card-img-wrap {
   position: relative;

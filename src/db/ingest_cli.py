@@ -220,6 +220,15 @@ def main() -> None:
         if set_code and cn:
             rebalanced_id_map[(set_code.lower(), str(cn))] = arena_id
 
+    # Map arena_id -> (set_code_lower, collector_number) so Scryfall can reject
+    # same-set variant printings (e.g. Starter Collection reprints) that share a
+    # name with the base card but have a different collector number.
+    src_setcn_by_id: dict = {
+        row[0]: (row[1].lower(), str(row[2]))
+        for row in conn.execute("SELECT arena_id, set_code, collector_number FROM cards")
+        if row[1] and row[2]
+    }
+
     print("[3/6] Enriching cards with Scryfall data...")
     t0 = time.time()
     card_count = ingest_scryfall(
@@ -229,6 +238,7 @@ def main() -> None:
         name_map=name_map,
         src_name_by_id=src_name_by_id,
         rebalanced_id_map=rebalanced_id_map,
+        src_setcn_by_id=src_setcn_by_id,
     )
     elapsed = time.time() - t0
     print(f"      Processed {card_count} Scryfall Arena cards in {elapsed:.1f}s.")

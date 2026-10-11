@@ -8,6 +8,7 @@ Routes:
 import asyncio
 import logging
 from collections.abc import AsyncIterable
+from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -15,9 +16,22 @@ from fastapi.sse import EventSourceResponse, ServerSentEvent
 
 from src.draft.seventeen_lands import fetch_ratings
 from src.draft.log_scanner import render_pack_html, start_draft_scanner, METRICS
+from src.config import DATA_DIR
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+MOCK_LOG_PATH = DATA_DIR / "Player.log"
+
+
+def _selected_log_path(app) -> Path | None:
+    """Return the log the scanner should watch: mock log if mock mode on, else primary."""
+    if getattr(app.state, "mock_draft_enabled", False):
+        MOCK_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        MOCK_LOG_PATH.touch(exist_ok=True)   # ensure it exists so scanner can watch it
+        return MOCK_LOG_PATH
+    from src.db.log_parser import find_player_log
+    return find_player_log(db=app.state.db)
 
 ALLOWED_FORMATS = ("PremierDraft", "QuickDraft", "TradDraft", "PickTwoDraft")
 
@@ -78,6 +92,7 @@ async def draft_page(request: Request):
         "set_code": draft_state.set_code if draft_state else "",
         "draft_scanning": getattr(request.app.state, "draft_scanning", False),
         "color_filter": getattr(request.app.state, "draft_color_filter", set()),
+        "mock_draft": getattr(request.app.state, "mock_draft_enabled", False),
         "metric": metric,
         "metric_order": metric_order,
         "METRICS": METRICS,
@@ -136,8 +151,7 @@ async def scan_start(request: Request):
     """Start the log file watcher — user-initiated, not automatic."""
     if getattr(request.app.state, "draft_scanning", False):
         return RedirectResponse("/draft", status_code=303)
-    from src.db.log_parser import find_player_log
-    log_path = find_player_log(db=request.app.state.db)
+    log_path = _selected_log_path(request.app)
     if not log_path or not log_path.exists():
         templates = request.app.state.templates
         return templates.TemplateResponse(
@@ -153,6 +167,7 @@ async def scan_start(request: Request):
                 "metric": getattr(request.app.state, "draft_metric", "gihwr"),
                 "metric_order": getattr(request.app.state, "draft_metric_order", ["gihwr", "ohwr", "iwd", "gwr", "ata", "alsa"]),
                 "METRICS": METRICS,
+                "mock_draft": getattr(request.app.state, "mock_draft_enabled", False),
             },
             status_code=200,
         )
@@ -185,6 +200,41 @@ async def scan_stop(request: Request):
     return RedirectResponse("/draft", status_code=303)
 
 
+@router.post("/draft/mock/toggle")
+async def toggle_mock_draft(request: Request):
+    """Toggle mock-draft mode and restart the scanner on the chosen log if running."""
+    app = request.app
+    cur = getattr(app.state, "mock_draft_enabled", False)
+    app.state.mock_draft_enabled = not cur
+    app.state.db.execute(
+        "INSERT OR REPLACE INTO meta (key,value) VALUES ('mock_draft',?)",
+        ("1" if app.state.mock_draft_enabled else "0"),
+    )
+    app.state.db.commit()
+    # If a scanner is running, stop it and restart on the newly-selected log so the change is live.
+    if getattr(app.state, "draft_scanning", False):
+        # ---- stop (mirror scan_stop) ----
+        import asyncio
+        observer = getattr(app.state, "draft_observer", None)
+        if observer:
+            observer.unschedule_all()
+            observer.stop()
+            await asyncio.get_event_loop().run_in_executor(None, observer.join)
+            app.state.draft_observer = None
+        app.state.draft_scanning = False
+        # ---- start on new log ----
+        from src.draft.state import DraftState
+        app.state.draft_state = DraftState()
+        log_path = _selected_log_path(app)
+        if log_path:
+            await start_draft_scanner(app, log_path, app.state.draft_state)
+            app.state.draft_scanning = True
+    templates = app.state.templates
+    return templates.TemplateResponse(
+        request, "partials/draft_sidebar.html", _sidebar_context(request)
+    )
+
+
 def _sidebar_context(request: Request) -> dict:
     """Build context dict for the draft_sidebar partial."""
     metric_order = getattr(request.app.state, 'draft_metric_order', ['gihwr', 'ohwr', 'iwd', 'gwr', 'ata', 'alsa'])
@@ -196,6 +246,7 @@ def _sidebar_context(request: Request) -> dict:
     set_override = getattr(request.app.state, 'draft_set_override', None)
     return {
         "color_filter": getattr(request.app.state, 'draft_color_filter', set()),
+        "mock_draft": getattr(request.app.state, "mock_draft_enabled", False),
         "metric": metric,
         "metric_order": metric_order,
         "METRICS": METRICS,
@@ -222,6 +273,9 @@ async def _rerender_pack(request: Request):
             active_set = set_override or state.set_code
             if (fmt_override or set_override) and active_set:
                 active_ratings = await fetch_ratings(active_set, active_fmt)
+                # Sync state so log_scanner doesn't re-fetch on next pack
+                state.ratings = active_ratings
+                state.last_fetched_format = active_fmt
             else:
                 active_ratings = state.ratings
             queue.put_nowait(render_pack_html(request.app, state, active_fmt, active_ratings, active_set))

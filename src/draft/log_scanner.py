@@ -652,18 +652,18 @@ async def log_consumer(app, queue: asyncio.Queue, state: DraftState) -> None:
             changed = False
             for line in new_lines:
                 changed |= _process_line(line, state, app)
-            # Fetch 17lands ratings whenever we're in a draft and have no ratings yet.
-            # state.ratings is cleared on each new draft start, so this correctly
-            # re-fetches when switching formats without restarting the scanner.
+            # Fetch 17lands ratings when in a draft and (no ratings yet OR format changed).
             set_override = getattr(app.state, 'draft_set_override', None)
             fmt_override = getattr(app.state, 'draft_format_override', None)
             active_set = set_override or state.set_code
             active_fmt = fmt_override or state.format or "PremierDraft"
+            format_changed = state.last_fetched_format != active_fmt
             if (state.phase in (DraftPhase.DRAFT_STARTED, DraftPhase.PACK_OFFERED)
-                    and not state.ratings
+                    and (not state.ratings or format_changed)
                     and active_set):
                 try:
                     state.ratings = await fetch_ratings(active_set, active_fmt)
+                    state.last_fetched_format = active_fmt
                     logger.info(
                         "log_scanner: fetched %d ratings for %s %s",
                         sum(1 for v in state.ratings.values() if v is not None),

@@ -20,6 +20,7 @@ class DraftState:
     pack_cards: list[int] = field(default_factory=list)   # arena_ids in current pack
     taken_cards: list[int] = field(default_factory=list)  # arena_ids picked so far
     ratings: dict[int, dict[str, float | None]] = field(default_factory=dict)  # {arena_id: {field: value}}
+    last_fetched_format: str = ""  # track format used for last ratings fetch
     file_offset: int = 0        # byte offset into Player.log
     entry_cost_gold: int = 0
     wins: int = 0
