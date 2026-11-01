@@ -63,6 +63,12 @@
         {% if metric_val is not none %}
           {% if metric_pct %}{{ "%.1f"|format(metric_val * 100) }}%{% else %}{{ "%.1f"|format(metric_val) }}{% endif %}
         {% else %}N/A{% endif %}
+        {% if card.arena_id in late_cards %}
+        <span class="draft-badge" title="Usually seen after your current pick (local 17Lands data)" style="margin-left:2px; font-size:0.58rem; font-weight:600; padding:0 2px; border-radius:3px; background:#4a3a10; color:#f9c74f;">LATE</span>
+        {% endif %}
+        {% if card.arena_id in top_deltas %}
+        <span class="draft-badge" title="Top players: +{{ '%.1f'|format(top_deltas[card.arena_id]) }}pp GIHWR vs all players (local 17Lands data)" style="margin-left:2px; font-size:0.58rem; font-weight:600; padding:0 2px; border-radius:3px; background:#3a1f6e; color:#c4b5fd;">TOP+</span>
+        {% endif %}
       </div>
     </div>
     <div class="rarity-stripe rarity-{{ card.rarity[0]|upper if card.rarity else 'C' }}"></div>

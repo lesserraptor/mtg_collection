@@ -157,6 +157,7 @@ templates.env.globals["oracle_to_html"] = _oracle_to_html
 
 @app.on_event("startup")
 async def startup():
+    logging.basicConfig(level=logging.INFO)
     import os
     from pathlib import Path
 
@@ -194,6 +195,10 @@ async def startup():
     _mock = app.state.db.execute("SELECT value FROM meta WHERE key='mock_draft'").fetchone()
     app.state.mock_draft_enabled = (_mock[0] == "1") if _mock else False
 
+    _group = app.state.db.execute("SELECT value FROM meta WHERE key='draft_user_group'").fetchone()
+    app.state.draft_user_group = _group[0] if _group and _group[0] in ('all', 'top') else 'all'
+    logger.info("draft: user_group=%s", app.state.draft_user_group)
+
     # Initial scan for completed draft results from Player.log
     try:
         from src.draft.results_importer import scan_draft_results_from_log
@@ -226,6 +231,11 @@ async def shutdown():
 @app.get("/")
 async def root():
     return RedirectResponse(url="/cards")
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 
 # Register routers

@@ -14,7 +14,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
-from src.draft.seventeen_lands import fetch_ratings
+from src.draft.seventeen_lands import get_ratings
 from src.draft.log_scanner import render_pack_html, start_draft_scanner, METRICS
 from src.config import DATA_DIR
 
@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 MOCK_LOG_PATH = DATA_DIR / "Player.log"
+
+ALLOWED_USER_GROUPS = ("all", "top")
 
 
 def _selected_log_path(app) -> Path | None:
@@ -32,6 +34,7 @@ def _selected_log_path(app) -> Path | None:
         return MOCK_LOG_PATH
     from src.db.log_parser import find_player_log
     return find_player_log(db=app.state.db)
+
 
 ALLOWED_FORMATS = ("PremierDraft", "QuickDraft", "TradDraft", "PickTwoDraft")
 
@@ -101,6 +104,7 @@ async def draft_page(request: Request):
         "ALLOWED_FORMATS": ALLOWED_FORMATS,
         "detected_set": draft_state.set_code if draft_state else "",
         "set_override": set_override or "",
+        "draft_user_group": getattr(request.app.state, 'draft_user_group', 'all'),
         "draft_sets": _get_draft_sets(request.app.state.db),
     }
     return templates.TemplateResponse(request, "draft.html", context)
@@ -141,7 +145,8 @@ async def trigger_ratings_fetch(request: Request, set_code: str, format: str = "
     draft_state = getattr(request.app.state, "draft_state", None)
     if draft_state is None:
         return {"error": "no draft state"}
-    ratings = await fetch_ratings(set_code, format)
+    user_group = getattr(request.app.state, 'draft_user_group', 'all')
+    ratings = await get_ratings(set_code, format, user_group=user_group)
     draft_state.ratings = ratings
     return {"set_code": set_code, "format": format, "cards_with_ratings": sum(1 for e in ratings.values() if any(v is not None for v in e.values()))}
 
@@ -257,6 +262,7 @@ def _sidebar_context(request: Request) -> dict:
         "ALLOWED_FORMATS": ALLOWED_FORMATS,
         "detected_set": draft_state.set_code if draft_state else "",
         "set_override": set_override or "",
+        "draft_user_group": getattr(request.app.state, 'draft_user_group', 'all'),
         "draft_sets": _get_draft_sets(request.app.state.db),
     }
 
@@ -272,13 +278,18 @@ async def _rerender_pack(request: Request):
             active_fmt = fmt_override or state.format or "PremierDraft"
             active_set = set_override or state.set_code
             if (fmt_override or set_override) and active_set:
-                active_ratings = await fetch_ratings(active_set, active_fmt)
+                active_ratings = await get_ratings(active_set, active_fmt, user_group="all")
+                active_ratings_top = await get_ratings(active_set, active_fmt, user_group="top")
                 # Sync state so log_scanner doesn't re-fetch on next pack
-                state.ratings = active_ratings
+                state.ratings_all = active_ratings
+                state.ratings_top = active_ratings_top
                 state.last_fetched_format = active_fmt
+                user_group = getattr(request.app.state, 'draft_user_group', 'all')
+                state.ratings = active_ratings if user_group == "all" else active_ratings_top
             else:
                 active_ratings = state.ratings
-            queue.put_nowait(render_pack_html(request.app, state, active_fmt, active_ratings, active_set))
+                active_ratings_top = state.ratings_top
+            queue.put_nowait(render_pack_html(request.app, state, active_fmt, state.ratings, active_ratings_top, active_set))
 
 
 @router.post("/draft/metric/set")
@@ -335,6 +346,27 @@ async def set_draft_format(request: Request, format: str = Form("")):
     if format not in ALLOWED_FORMATS:
         return HTMLResponse("", status_code=400)
     request.app.state.draft_format_override = format
+    await _rerender_pack(request)
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request, "partials/draft_sidebar.html", _sidebar_context(request)
+    )
+
+
+@router.post("/draft/group/set")
+async def set_draft_user_group(request: Request, group: str = Form("")):
+    """Set the ratings user group (all players vs top) and re-render the pack."""
+    if group not in ALLOWED_USER_GROUPS:
+        return HTMLResponse("", status_code=400)
+    request.app.state.draft_user_group = group
+    request.app.state.db.execute(
+        "INSERT OR REPLACE INTO meta (key,value) VALUES ('draft_user_group',?)", (group,)
+    )
+    request.app.state.db.commit()
+    draft_state = getattr(request.app.state, "draft_state", None)
+    if draft_state:
+        # Switch between already-fetched all/top ratings — no API call needed
+        draft_state.ratings = draft_state.ratings_all if group == "all" else draft_state.ratings_top
     await _rerender_pack(request)
     templates = request.app.state.templates
     return templates.TemplateResponse(

@@ -28,6 +28,8 @@ FastAPI web app (`src/web/app.py`) with SQLite backend (`data/mtga_collection.db
 | `src/db/ingest_cli.py` | Full data pipeline CLI (CardDB → Scryfall → Collection → Errata) |
 | `src/db/ingest.py` | Scryfall bulk download + enrichment |
 | `src/db/mtga_card_db.py` | Native MTGA CardDatabase (.mtga SQLite) parser |
+| `src/db/draft_metrics_ingest.py` | Local 17Lands ingest CLI (raw CSV → draft_card_metrics) |
+| `src/db/draft_metrics.py` | Draft metrics read layer (rates at read time, badges) |
 | `src/collection.py` | Collection JSON parsing |
 | `src/draft/` | Draft log scanner + 17Lands integration |
 | `src/watcher.py` | File watcher for live collection updates |
@@ -39,6 +41,7 @@ FastAPI web app (`src/web/app.py`) with SQLite backend (`data/mtga_collection.db
 2. **Scryfall enrichment** — downloads ~2GB bulk JSON, enriches with images/metadata
 3. **Collection upsert** — reads collection JSON (auto-detected from Proton path)
 4. **Errata** — applies manual corrections from `src/db/errata.py`
+5. **Local 17Lands metrics** — raw CSV aggregation into `draft_card_metrics` (all + top rank groups); draft app reads local first, 17Lands API as fallback; user-group toggle + LATE/TOP+ badges
 
 ## Commands
 
@@ -49,6 +52,7 @@ FastAPI web app (`src/web/app.py`) with SQLite backend (`data/mtga_collection.db
 | Ingest without MTGA installed | `python src/db/ingest_cli.py --skip-mtga-card-db` |
 | Use cached Scryfall data | `python src/db/ingest_cli.py --skip-download` |
 | Skip collection load | `python src/db/ingest_cli.py --skip-collection` |
+| Local 17Lands ingest | `python -m src.db.draft_metrics_ingest [--set FRA] [--format PremierDraft] [--skip-draft-data] [--skip-game-data] [--rebuild]` — aggregates raw 17Lands bulk CSVs (data/game_data_public.*.csv, data/draft_data_public.*.csv) into draft_card_metrics; rates computed at read time |
 | Bundle for transfer | `./pack.sh` |
 
 ## Important notes

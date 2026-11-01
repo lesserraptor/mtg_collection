@@ -218,6 +218,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
             set_type     TEXT NOT NULL DEFAULT '',
             updated_at   TEXT NOT NULL
         );
+
     """)
 
 

@@ -103,4 +103,20 @@
       {% endfor %}
     </div>
   </div>
+
+  <div class="sidebar-section" style="margin-top:1rem;">
+    <div class="sidebar-label">Data group</div>
+    <div style="display:flex; flex-direction:column; gap:0.3rem;">
+      {% for group_key, group_label in [('all', 'All players'), ('top', 'Top players')] %}
+      <button type="button"
+        hx-post="/draft/group/set"
+        hx-vals='{"group": "{{ group_key }}"}'
+        hx-target="#draft-sidebar"
+        hx-swap="outerHTML"
+        style="text-align:left; padding:0.3rem 0.6rem; border-radius:4px; border:1px solid {% if group_key == draft_user_group %}#7c3aed{% else %}#333{% endif %}; background:{% if group_key == draft_user_group %}#3b1f6e{% else %}transparent{% endif %}; color:{% if group_key == draft_user_group %}#e2e8f0{% else %}#888{% endif %}; cursor:pointer; font-size:0.8rem;">
+        {{ group_label }}
+      </button>
+      {% endfor %}
+    </div>
+  </div>
 </div>

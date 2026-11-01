@@ -17,7 +17,7 @@ from pathlib import Path
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers.polling import PollingObserver as Observer
 
-from src.draft.seventeen_lands import fetch_ratings
+from src.draft.seventeen_lands import get_ratings
 from src.draft.state import DraftPhase, DraftState
 
 logger = logging.getLogger(__name__)
@@ -487,7 +487,7 @@ def _process_line(line: str, state: DraftState, app=None) -> bool:
 # Server-side rendering helper
 # ---------------------------------------------------------------------------
 
-def render_pack_html(app, state: DraftState, active_fmt: str | None = None, active_ratings: dict | None = None, active_set: str | None = None) -> str:
+def render_pack_html(app, state: DraftState, active_fmt: str | None = None, active_ratings: dict | None = None, active_ratings_top: dict | None = None, active_set: str | None = None) -> str:
     """Render the draft pack grid as an HTML string using the Jinja2 template.
 
     Queries DB for card metadata + owned quantity for all arena_ids in
@@ -496,20 +496,43 @@ def render_pack_html(app, state: DraftState, active_fmt: str | None = None, acti
 
     active_fmt: format string override (e.g. "QuickDraft"); falls back to state.format
     active_ratings: ratings dict override; falls back to state.ratings
+    active_ratings_top: top-player ratings dict override; falls back to state.ratings_top
     active_set: set code override (e.g. "TMT"); falls back to state.set_code
     """
     fmt = active_fmt or state.format or "PremierDraft"
     display_set = active_set or state.set_code
     ratings = active_ratings if active_ratings is not None else state.ratings
+    arena_ids = state.pack_cards
 
     db = app.state.db
     templates = app.state.templates
-    arena_ids = state.pack_cards
     ratings_available = bool(ratings) and any(
         v is not None
         for entry in ratings.values()
         for v in (entry.values() if isinstance(entry, dict) else [entry])
     )
+    # Badges only render for the detected draft's set/format; suppressed
+    # entirely while a user override is active.
+    override_active = bool(
+        getattr(app.state, 'draft_set_override', None)
+        or getattr(app.state, 'draft_format_override', None)
+    )
+    ratings_all = state.ratings_all or {}
+    ratings_top = state.ratings_top or {}
+    late_cards: set[int] = set()
+    top_deltas: dict[int, float] = {}
+    for aid in arena_ids:
+        all_entry = ratings_all.get(aid) or {}
+        top_entry = ratings_top.get(aid) or {}
+        avg_seen = all_entry.get('avg_seen')
+        if avg_seen is not None and state.pick_num > avg_seen:
+            late_cards.add(aid)
+        all_gihwr = all_entry.get('ever_drawn_win_rate')
+        top_gihwr = top_entry.get('ever_drawn_win_rate')
+        if all_gihwr is not None and top_gihwr is not None:
+            delta = top_gihwr - all_gihwr
+            if delta > 0.05:
+                top_deltas[aid] = delta
     if not arena_ids:
         template = templates.env.get_template("partials/draft_pack.html")
         return template.render(
@@ -525,6 +548,8 @@ def render_pack_html(app, state: DraftState, active_fmt: str | None = None, acti
             metric_pct=True,
             metric_label='GIHWR',
             ratings_available=ratings_available,
+            late_cards=set(),
+            top_deltas={},
         )
     placeholders = ",".join("?" * len(arena_ids))
     rows = db.execute(
@@ -600,6 +625,8 @@ def render_pack_html(app, state: DraftState, active_fmt: str | None = None, acti
         metric_pct=metric_cfg['pct'],
         metric_label=metric_cfg['label'],
         ratings_available=ratings_available,
+        late_cards=late_cards,
+        top_deltas=top_deltas,
     )
 
 
@@ -662,14 +689,13 @@ async def log_consumer(app, queue: asyncio.Queue, state: DraftState) -> None:
                     and (not state.ratings or format_changed)
                     and active_set):
                 try:
-                    state.ratings = await fetch_ratings(active_set, active_fmt)
+                    ratings_all = await get_ratings(active_set, active_fmt, user_group="all")
+                    ratings_top = await get_ratings(active_set, active_fmt, user_group="top")
+                    user_group = getattr(app.state, 'draft_user_group', 'all')
+                    state.ratings = ratings_all if user_group == "all" else ratings_top
+                    state.ratings_all = ratings_all
+                    state.ratings_top = ratings_top
                     state.last_fetched_format = active_fmt
-                    logger.info(
-                        "log_scanner: fetched %d ratings for %s %s",
-                        sum(1 for v in state.ratings.values() if v is not None),
-                        active_set,
-                        active_fmt,
-                    )
                 except Exception:
                     logger.exception("log_scanner: failed to fetch 17lands ratings")
             if changed:
@@ -728,7 +754,10 @@ async def start_draft_scanner(app, log_path: Path, state: DraftState) -> None:
         # Reset offset after prev-log scan so current log is not skipped
         state.file_offset = 0
 
-    # Initial sync read - ensures state is updated before we return
+    # Initial sync read - advances file_offset to EOF so the consumer only
+    # sees newly appended lines. Do NOT push SSE here: pre-existing content
+    # from a previous session must not render as "live" draft content.
+    # Nothing shows until new log lines arrive via watcher -> consumer -> SSE.
     _process_log_file(log_path, state, app)
 
     # Trigger async consumer for future changes

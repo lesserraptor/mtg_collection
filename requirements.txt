@@ -4,3 +4,4 @@ fastapi[standard]>=0.100
 httpx>=0.24
 aiofiles>=23.0
 watchdog>=6.0
+
