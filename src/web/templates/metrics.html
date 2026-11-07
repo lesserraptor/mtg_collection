@@ -84,6 +84,76 @@
         <canvas id="chart-draft-roi"></canvas>
       </div>
     </div>
+
+    <div class="chart-card" style="grid-column: 1 / -1;">
+      <h3>Draft Results by Set</h3>
+      {% if draft_set_stats %}
+      {% macro sort_header(column, label, align) %}
+        {% set current = sort == column %}
+        {% set toggle = "asc" if current and dir == "desc" else "desc" %}
+        <th style="padding:6px 10px; text-align:{{ align }};">
+          <a href="/metrics?sort={{ column }}&dir={{ toggle }}&range={{ range }}">
+            {{ label }}
+            {% if current %}
+              {% if dir == "desc" %} ▼{% else %} ▲{% endif %}
+            {% endif %}
+          </a>
+        </th>
+      {% endmacro %}
+      <table style="width:100%; border-collapse:collapse; font-size:0.9em;">
+        <thead>
+          <tr style="color:var(--text-muted); text-align:left; border-bottom:1px solid var(--border);">
+            {{ sort_header("set", "Set", "left") }}
+            {{ sort_header("drafts", "Drafts", "right") }}
+            {{ sort_header("avg_roi", "Avg ROI", "right") }}
+            {{ sort_header("trophies", "Trophies", "right") }}
+            {{ sort_header("gems_won", "Gems Won", "right") }}
+            {{ sort_header("avg_gems_per_draft", "Avg Gems/Draft", "right") }}
+            {{ sort_header("total_gold_spent", "Gold Spent", "right") }}
+            {{ sort_header("gold_per_gem", "Gold per Gem", "right") }}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in draft_set_stats %}
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:6px 10px; display:flex; align-items:center; gap:8px;">
+              {% if row.icon_svg_uri %}
+              <img src="{{ row.icon_svg_uri }}" width="20" height="20"
+                   style="opacity:0.8; flex-shrink:0;"
+                   onerror="this.style.display='none'" />
+              {% endif %}
+              <div>
+                <div style="font-weight:600; font-size:0.9rem; color:var(--text);">{{ row.set_name }}</div>
+                <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">{{ row.set_code }}</div>
+              </div>
+            </td>
+            <td style="padding:6px 10px; text-align:right;">{{ row.drafts }}</td>
+            <td style="padding:6px 10px; text-align:right;">{{ "%.4f"|format(row.avg_roi) }}</td>
+            <td style="padding:6px 10px; text-align:right;">{{ row.trophies or 0 }}</td>
+            <td style="padding:6px 10px; text-align:right;">{{ "{:,}".format(row.gems_won or 0) }}</td>
+            <td style="padding:6px 10px; text-align:right;">{{ "%.2f"|format(row.avg_gems_per_draft or 0) }}</td>
+            <td style="padding:6px 10px; text-align:right;">{{ "{:,}".format(row.total_gold_spent or 0) }}</td>
+            <td style="padding:6px 10px; text-align:right;">{{ "%.4f"|format(row.gold_per_gem or 0) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr style="border-top:2px solid var(--border); font-weight:600;">
+            <td style="padding:6px 10px;">All sets</td>
+            <td style="padding:6px 10px; text-align:right;">{{ draft_set_totals.drafts }}</td>
+            <td style="padding:6px 10px; text-align:right;">{{ "%.4f"|format(draft_set_totals.avg_roi) }}</td>
+            <td style="padding:6px 10px; text-align:right;">{{ draft_set_totals.trophies or 0 }}</td>
+            <td style="padding:6px 10px; text-align:right;">{{ "{:,}".format(draft_set_totals.gems_won or 0) }}</td>
+            <td style="padding:6px 10px; text-align:right;">{{ "%.2f"|format(draft_set_totals.avg_gems_per_draft or 0) }}</td>
+            <td style="padding:6px 10px; text-align:right;">{{ "{:,}".format(draft_set_totals.total_gold_spent or 0) }}</td>
+            <td style="padding:6px 10px; text-align:right;">{{ "%.4f"|format(draft_set_totals.gold_per_gem or 0) }}</td>
+          </tr>
+        </tfoot>
+      </table>
+      {% else %}
+      <p class="no-data">No draft results recorded yet.</p>
+      {% endif %}
+    </div>
   </div>
 
   <div id="no-data-message" class="no-data" style="display:none;">

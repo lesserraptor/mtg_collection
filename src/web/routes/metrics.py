@@ -6,6 +6,8 @@ from typing import Any
 from fastapi import APIRouter, Form, Query, Request, status
 from fastapi.responses import RedirectResponse
 
+from src.web.routes._set_info import _ensure_set_info, _SET_INFO
+
 router = APIRouter()
 
 GEMS_RECOVERED_BONUS = 3400
@@ -59,7 +61,7 @@ def _forward_fill(rows: list[dict], start: date, end: date) -> list[dict]:
 
 
 @router.get("/metrics")
-async def metrics_view(request: Request, range: str = "90"):
+async def metrics_view(request: Request, range: str = "90", sort: str = "set", dir: str = "desc"):
     """Render the metrics page with chart."""
     db = request.app.state.db
     templates = request.app.state.templates
@@ -68,10 +70,83 @@ async def metrics_view(request: Request, range: str = "90"):
         "SELECT id, purchase_date, gems_at_purchase FROM mastery_pass_purchases ORDER BY purchase_date DESC LIMIT 5"
     ).fetchall()
 
+    # OM1 was renamed to SPM after those drafts were recorded, so normalize
+    # the set code before grouping so historical drafts group under SPM.
+    draft_set_stats = [
+        dict(r)
+        for r in db.execute("""
+            WITH normalized AS (
+                SELECT
+                    CASE WHEN LOWER(d.set_code) = 'om1' THEN 'spm' ELSE d.set_code END AS set_code,
+                    d.cost_gold, d.winnings_gems, d.trophy
+                FROM draft_results d
+            )
+            SELECT n.set_code, COUNT(*) AS drafts,
+                   AVG(CASE WHEN n.cost_gold > 0 THEN CAST(n.winnings_gems AS REAL) / n.cost_gold ELSE 0 END) AS avg_roi,
+                   SUM(n.trophy) AS trophies, SUM(n.winnings_gems) AS gems_won,
+                   AVG(n.winnings_gems) AS avg_gems_per_draft,
+                   SUM(n.cost_gold) AS total_gold_spent,
+                   SUM(n.cost_gold) * 1.0 / NULLIF(SUM(n.winnings_gems), 0) AS gold_per_gem,
+                   COALESCE((SELECT MAX(c.arena_id) FROM cards c
+                             WHERE LOWER(c.set_code) = LOWER(n.set_code)
+                               AND c.is_rebalanced = 0
+                               AND c.rarity NOT IN ('basic')
+                               AND c.is_active = 1), 0) AS max_arena_id
+            FROM normalized n
+            GROUP BY n.set_code
+        """).fetchall()
+    ]
+
+    _ensure_set_info(db)
+    for row in draft_set_stats:
+        info = _SET_INFO.get(row["set_code"].lower(), {})
+        row["set_name"] = info.get("name") or row["set_code"].upper()
+        row["icon_svg_uri"] = info.get("icon_svg_uri", "")
+
+    sort_columns = {"set", "drafts", "avg_roi", "trophies", "gems_won",
+                    "avg_gems_per_draft", "total_gold_spent", "gold_per_gem"}
+    if sort not in sort_columns:
+        sort = "set"
+    reverse = (dir == "desc")
+
+    def _sort_key(row):
+        if sort == "set":
+            return row.get("max_arena_id") or 0
+        return row.get(sort, 0) or 0
+
+    draft_set_stats.sort(key=_sort_key, reverse=reverse)
+
+    totals_row = db.execute("""
+        SELECT COUNT(*) AS drafts,
+               SUM(CASE WHEN cost_gold > 0 THEN CAST(winnings_gems AS REAL) ELSE 0 END)
+                   / NULLIF(SUM(CASE WHEN cost_gold > 0 THEN cost_gold ELSE 0 END), 0) AS avg_roi,
+               SUM(trophy) AS trophies,
+               SUM(winnings_gems) AS gems_won,
+               AVG(winnings_gems) AS avg_gems_per_draft,
+               SUM(cost_gold) AS total_gold_spent,
+               SUM(cost_gold) * 1.0 / NULLIF(SUM(winnings_gems), 0) AS gold_per_gem
+        FROM draft_results
+    """).fetchone()
+    draft_set_totals = dict(totals_row) if totals_row else {
+        "drafts": 0,
+        "avg_roi": 0.0,
+        "trophies": 0,
+        "gems_won": 0,
+        "avg_gems_per_draft": 0.0,
+        "total_gold_spent": 0,
+        "gold_per_gem": 0.0,
+    }
+    if draft_set_totals["avg_roi"] is None:
+        draft_set_totals["avg_roi"] = 0.0
+
     return templates.TemplateResponse(request, "metrics.html", {
         "mode": "metrics",
         "range": range,
+        "sort": sort,
+        "dir": dir,
         "mastery_purchases": [dict(r) for r in purchases],
+        "draft_set_stats": draft_set_stats,
+        "draft_set_totals": draft_set_totals,
     })
 
 
