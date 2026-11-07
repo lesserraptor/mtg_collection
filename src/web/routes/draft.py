@@ -112,10 +112,11 @@ async def draft_page(request: Request):
 
 @router.get("/draft/stream", response_class=EventSourceResponse)
 async def draft_stream(request: Request) -> AsyncIterable[ServerSentEvent]:
-    """SSE endpoint — streams pack_update events to the browser.
+    """SSE endpoint — streams pack_update and sidebar_update events to the browser.
 
-    The browser connects once; events are pushed whenever DraftState changes.
-    Client disconnect exits the generator cleanly.
+    pack_update carries rendered pack HTML; sidebar_update is a bare signal telling
+    the client to re-fetch /draft/sidebar. The browser connects once; events are
+    pushed whenever DraftState changes. Client disconnect exits the generator cleanly.
     """
     # Ensure SSE queue exists (created in app startup)
     queue: asyncio.Queue = getattr(request.app.state, "draft_event_queue", None)
@@ -128,15 +129,38 @@ async def draft_stream(request: Request) -> AsyncIterable[ServerSentEvent]:
             await asyncio.sleep(15.0)
         return
 
+    sidebar_queue: asyncio.Queue | None = getattr(
+        request.app.state, "draft_sidebar_queue", None
+    )
+
     while True:
         if await request.is_disconnected():
             logger.debug("draft_stream: client disconnected")
             break
+        tasks: dict[asyncio.Task, str] = {asyncio.create_task(queue.get()): "pack_update"}
+        if sidebar_queue is not None:
+            tasks[asyncio.create_task(sidebar_queue.get())] = "sidebar_update"
         try:
-            html_string = await asyncio.wait_for(queue.get(), timeout=15.0)
-            yield ServerSentEvent(raw_data=html_string, event="pack_update")
-        except asyncio.TimeoutError:
-            continue  # FastAPI sends keep-alive; this is extra safety
+            await asyncio.wait(tasks, timeout=15.0, return_when=asyncio.FIRST_COMPLETED)
+        except asyncio.CancelledError:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
+        # Cancel losers, then collect every result. A queue.get() that dequeued an
+        # item just before being cancelled reports it here instead of dropping it.
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for task, result in zip(tasks, results):
+            if isinstance(result, BaseException):
+                continue
+            event = tasks[task]
+            yield ServerSentEvent(
+                raw_data=result if event == "pack_update" else "{}",
+                event=event,
+            )
 
 
 @router.post("/draft/fetch-ratings")
@@ -235,6 +259,15 @@ async def toggle_mock_draft(request: Request):
             await start_draft_scanner(app, log_path, app.state.draft_state)
             app.state.draft_scanning = True
     templates = app.state.templates
+    return templates.TemplateResponse(
+        request, "partials/draft_sidebar.html", _sidebar_context(request)
+    )
+
+
+@router.get("/draft/sidebar", response_class=HTMLResponse)
+async def draft_sidebar(request: Request):
+    """Re-render the sidebar partial — fetched by the client on sidebar_update SSE."""
+    templates = request.app.state.templates
     return templates.TemplateResponse(
         request, "partials/draft_sidebar.html", _sidebar_context(request)
     )

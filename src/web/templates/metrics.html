@@ -45,7 +45,7 @@
   <div class="charts-grid">
     <div class="chart-card">
       <h3>Gems</h3>
-      <div class="chart-container">
+      <div class="chart-container" style="height: 240px;">
         <canvas id="chart-gems"></canvas>
       </div>
     </div>
@@ -160,7 +160,6 @@ async function loadMetrics() {
       gemsDatasets.push({ label: 'Mastery Purchase', data: datasets['Mastery Purchase Baseline'], borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0)', borderDash: [5, 5], fill: false, pointRadius: 3, tension: 0, borderWidth: 2 });
       gemsDatasets.push({ label: 'Gems Recovered', data: datasets['Gems Recovered'] || [], borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0)', borderDash: [2, 2], fill: false, pointRadius: 3, tension: 0, borderWidth: 2 });
     }
-    const yMin = baseline ? baseline - 500 : null;
     charts['chart-gems'] = new Chart(gemsCtx, {
       type: 'line',
       data: { labels: window.metricLabels, datasets: gemsDatasets },
@@ -168,7 +167,7 @@ async function loadMetrics() {
         responsive: true,
         maintainAspectRatio: false,
         plugins: { legend: { display: true, position: 'bottom', labels: { usePointStyle: true, padding: 15 } } },
-        scales: { y: yMin ? { min: yMin } : {} }
+        scales: { y: { grace: '10%', ticks: { precision: 0 } } }
       }
     });
 

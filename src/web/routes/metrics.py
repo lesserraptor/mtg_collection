@@ -8,6 +8,8 @@ from fastapi.responses import RedirectResponse
 
 router = APIRouter()
 
+GEMS_RECOVERED_BONUS = 3400
+
 
 def _get_date_range(range_param: str) -> tuple[date, date | None]:
     """Convert range param to start/end dates."""
@@ -123,7 +125,7 @@ async def metrics_data(request: Request, range: str = "90"):
             {"label": "Mastery Purchase Baseline", "data": [baseline] * len(filled), "borderColor": "#22c55e", "backgroundColor": "rgba(34,197,94,0)", "borderDash": [5, 5], "fill": False, "pointRadius": 3, "tension": 0, "borderWidth": 2}
         )
         datasets.append(
-            {"label": "Gems Recovered", "data": [baseline + 3400] * len(filled), "borderColor": "#f59e0b", "backgroundColor": "rgba(245,158,11,0)", "borderDash": [2, 2], "fill": False, "pointRadius": 3, "tension": 0, "borderWidth": 2}
+            {"label": "Gems Recovered", "data": [baseline + GEMS_RECOVERED_BONUS] * len(filled), "borderColor": "#f59e0b", "backgroundColor": "rgba(245,158,11,0)", "borderDash": [2, 2], "fill": False, "pointRadius": 3, "tension": 0, "borderWidth": 2}
         )
 
     return {

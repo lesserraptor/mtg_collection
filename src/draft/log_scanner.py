@@ -42,6 +42,7 @@ DRAFT_START_PREFIXES = [
     "[UnityCrossThreadLogger]==> Event_Join ",
     "[UnityCrossThreadLogger]==> EventJoin ",
     "[UnityCrossThreadLogger]==> BotDraft_DraftStatus ",
+    "[UnityCrossThreadLogger]==> BotDraftDraftStatus ",
 ]
 
 # ---------------------------------------------------------------------------
@@ -56,6 +57,7 @@ PICK_PREFIX_V1 = "[UnityCrossThreadLogger]==> Event_PlayerDraftMakePick "
 PICK_PREFIX_V1B = "[UnityCrossThreadLogger]==> EventPlayerDraftMakePick "
 PICK_PREFIX_V2 = "[UnityCrossThreadLogger]==> Draft.MakeHumanDraftPick "
 PICK_PREFIX_BOT = "[UnityCrossThreadLogger]==> BotDraft_DraftPick "
+PICK_PREFIX_BOT_B = "[UnityCrossThreadLogger]==> BotDraftDraftPick "
 
 # Known Alchemy/digital set code prefixes to strip before querying 17lands
 _ALCHEMY_PREFIXES = ("Y25", "Y", "A")
@@ -93,8 +95,64 @@ def _strip_alchemy_prefix(code: str) -> str:
     return code.upper()
 
 
+def _derive_set_and_format(event_name: str, *, bot_draft: bool = False) -> tuple[str, str]:
+    """Derive (set_code, format) from an Arena EventName like 'QuickDraft_FRA_20261027'."""
+    parts = event_name.split("_")
+    set_code_raw = next(
+        (p for i, p in enumerate(parts) if i > 0 and p.isalpha() and 2 <= len(p) <= 5),
+        parts[2] if len(parts) >= 3 else "",
+    )
+    set_code = _strip_alchemy_prefix(set_code_raw) if set_code_raw else ""
+    draft_type = parts[0] if parts else ""
+    if draft_type == "Trad" and len(parts) >= 2 and parts[1] == "Draft":
+        fmt = "TradDraft"
+    elif bot_draft or draft_type in ("BotDraft", "QuickDraft", "QuickDraftEmblem") or "BotDraft" in parts:
+        fmt = "QuickDraft"
+    elif "PickTwoDraft" in parts:
+        fmt = "PickTwoDraft"
+    else:
+        fmt = _DRAFT_FORMAT_MAP.get(draft_type, "PremierDraft")
+    return set_code, fmt
+
+
+def _is_draft_event(event_name: str) -> bool:
+    """True when an EventName denotes a limited (draft/sealed) event."""
+    parts = event_name.split("_")
+    draft_type = parts[0] if parts else ""
+    if draft_type in _DRAFT_FORMAT_MAP:
+        return True
+    if "Draft" in event_name or "Sealed" in event_name:
+        return True
+    return any(
+        i > 0 and p.isalpha() and p.isupper() and 2 <= len(p) <= 5
+        for i, p in enumerate(parts)
+    )
+
+
 # Match event prefix for tracking wins
 MATCH_STATE_PREFIX = "[UnityCrossThreadLogger]==> matchGameRoomStateChangedEvent "
+
+
+def _publish_draft_detected(
+    app, prev_set: str, prev_fmt: str, set_code: str, fmt: str
+) -> None:
+    """Signal a newly detected (set, format) and drop overrides it contradicts."""
+    fmt_override = getattr(app.state, "draft_format_override", None)
+    set_override = getattr(app.state, "draft_set_override", None)
+    pair_changed = prev_set != set_code or prev_fmt != fmt
+    override_stale = bool(
+        (fmt_override and fmt_override != fmt)
+        or (set_override and set_override.upper() != set_code.upper())
+    )
+    if not pair_changed and not override_stale:
+        return
+    if fmt_override and fmt_override != fmt:
+        app.state.draft_format_override = None
+    if set_override and set_override.upper() != set_code.upper():
+        app.state.draft_set_override = None
+    queue = getattr(app.state, "draft_sidebar_queue", None)
+    if queue is not None:
+        queue.put_nowait(None)
 
 
 def _process_line(line: str, state: DraftState, app=None) -> bool:
@@ -120,61 +178,45 @@ def _process_line(line: str, state: DraftState, app=None) -> bool:
                 if payload:
                     payload_obj = json.loads(payload) if isinstance(payload, str) else payload
                 event_name = request.get("EventName") or payload_obj.get("EventName", "")
-                if event_name:
-                    # EventName format: "Trad_Draft_MKM_20240301" or "Draft_MKM_20240301"
-                    parts = event_name.split("_")
-                    # Determine set code: look for 3-4 char alpha segment
-                    set_code_raw = ""
-                    draft_type = parts[0] if parts else ""
-                    for i, part in enumerate(parts):
-                        if part.isalpha() and 2 <= len(part) <= 5 and i > 0:
-                            set_code_raw = part
+                if not event_name or not _is_draft_event(event_name):
+                    logger.debug("log_scanner: ignoring non-draft event join")
+                    return changed
+                set_code, fmt = _derive_set_and_format(event_name, bot_draft="BotDraft" in prefix)
+                prev_set, prev_fmt = state.set_code, state.format
+                state.set_code = set_code
+                state.format = fmt
+                state.phase = DraftPhase.DRAFT_STARTED
+                state.pack_cards = []
+                state.taken_cards = []
+                state.ratings = {}
+                state.pack_num = 0
+                state.pick_num = 0
+                state.entry_cost_gold = 0
+                state.wins = 0
+                entry_currency = payload_obj.get("EntryCurrencyPaid") or payload_obj.get("EntryCurrency")
+                if entry_currency:
+                    for curr in entry_currency if isinstance(entry_currency, list) else [entry_currency]:
+                        if curr.get("CurrencyType") == "Gold":
+                            state.entry_cost_gold = int(curr.get("Quantity", 0))
                             break
-                    if not set_code_raw and len(parts) >= 3:
-                        set_code_raw = parts[2]
-                    set_code = _strip_alchemy_prefix(set_code_raw) if set_code_raw else ""
-                    # Map draft type to format string
-                    # "Trad_Draft" → prefix "Trad" maps differently from "BotDraft"
-                    if draft_type == "Trad" and len(parts) >= 2 and parts[1] == "Draft":
-                        fmt = "TradDraft"
-                    elif draft_type == "BotDraft" or "BotDraft" in prefix or "BotDraft" in parts:
-                        fmt = "QuickDraft"
-                    elif "PickTwoDraft" in parts:
-                        fmt = "PickTwoDraft"
-                    else:
-                        fmt = _DRAFT_FORMAT_MAP.get(draft_type, "PremierDraft")
-                    state.set_code = set_code
-                    state.format = fmt
-                    state.phase = DraftPhase.DRAFT_STARTED
-                    state.pack_cards = []
-                    state.taken_cards = []
-                    state.ratings = {}
-                    state.pack_num = 0
-                    state.pick_num = 0
-                    state.entry_cost_gold = 0
-                    state.wins = 0
-                    entry_currency = payload_obj.get("EntryCurrencyPaid") or payload_obj.get("EntryCurrency")
-                    if entry_currency:
-                        for curr in entry_currency if isinstance(entry_currency, list) else [entry_currency]:
-                            if curr.get("CurrencyType") == "Gold":
-                                state.entry_cost_gold = int(curr.get("Quantity", 0))
-                                break
-                    if not entry_currency:
-                        request_entry = request.get("EntryCurrencyPaid") or request.get("EntryCurrency")
-                        if request_entry is not None:
-                            if isinstance(request_entry, (int, float)):
-                                state.entry_cost_gold = int(request_entry)
-                            elif isinstance(request_entry, list):
-                                for curr in request_entry:
-                                    if curr.get("CurrencyType") == "Gold":
-                                        state.entry_cost_gold = int(curr.get("Quantity", 0))
-                                        break
-                    changed = True
-                    logger.debug(
-                        "log_scanner: draft started — set=%s format=%s",
-                        state.set_code,
-                        state.format,
-                    )
+                if not entry_currency:
+                    request_entry = request.get("EntryCurrencyPaid") or request.get("EntryCurrency")
+                    if request_entry is not None:
+                        if isinstance(request_entry, (int, float)):
+                            state.entry_cost_gold = int(request_entry)
+                        elif isinstance(request_entry, list):
+                            for curr in request_entry:
+                                if curr.get("CurrencyType") == "Gold":
+                                    state.entry_cost_gold = int(curr.get("Quantity", 0))
+                                    break
+                changed = True
+                if app is not None:
+                    _publish_draft_detected(app, prev_set, prev_fmt, set_code, fmt)
+                logger.debug(
+                    "log_scanner: draft started — set=%s format=%s",
+                    state.set_code,
+                    state.format,
+                )
             except (json.JSONDecodeError, KeyError, TypeError, ValueError):
                 logger.debug("log_scanner: failed to parse draft start line", exc_info=False)
             break  # Only one prefix can match per line
@@ -254,29 +296,22 @@ def _process_line(line: str, state: DraftState, app=None) -> bool:
                     picked_ids = [int(x) for x in data.get("PickedCards", []) if str(x).strip()]
                     if len(picked_ids) > len(state.taken_cards):
                         state.taken_cards = picked_ids
-                    # Extract set code + format from EventName if not already known
-                    if not state.set_code:
-                        event_name = data.get("EventName", "")
-                        if event_name:
-                            parts = event_name.split("_")
-                            # Skip parts[0] — it may be an event-wrapper prefix (e.g. "MWM"),
-                            # not the draft type or set code.
-                            set_code_raw = next(
-                                (p for i, p in enumerate(parts) if i > 0 and p.isalpha() and 2 <= len(p) <= 5),
-                                parts[1] if len(parts) >= 2 else ""
-                            )
-                            state.set_code = _strip_alchemy_prefix(set_code_raw) if set_code_raw else ""
-                            draft_type = parts[0] if parts else ""
-                            # "BotDraft" may appear anywhere in parts (e.g. "MWM_TMT_BotDraft_...")
-                            if draft_type in ("BotDraft", "QuickDraft", "QuickDraftEmblem") or "BotDraft" in parts:
-                                state.format = "QuickDraft"
-                            elif draft_type == "Trad":
-                                state.format = "TradDraft"
-                            else:
-                                state.format = _DRAFT_FORMAT_MAP.get(draft_type, "PremierDraft")
+                    # A DraftPack line can belong to a different draft than the one
+                    # already in state (app restarted mid-draft); a matching name is a no-op.
+                    event_name = data.get("EventName", "")
+                    if event_name:
+                        derived_set, derived_fmt = _derive_set_and_format(event_name)
+                        if derived_set and derived_set != state.set_code:
+                            state.set_code = derived_set
                             logger.debug(
-                                "log_scanner: draft detected via DraftPack — set=%s format=%s",
-                                state.set_code, state.format,
+                                "log_scanner: draft set re-derived via DraftPack — set=%s",
+                                state.set_code,
+                            )
+                        if derived_fmt and derived_fmt != state.format:
+                            state.format = derived_fmt
+                            logger.debug(
+                                "log_scanner: draft format re-derived via DraftPack — format=%s",
+                                state.format,
                             )
                     logger.debug(
                         "log_scanner: pack offered (DraftPack) — %d cards",
@@ -358,18 +393,30 @@ def _process_line(line: str, state: DraftState, app=None) -> bool:
     # ------------------------------------------------------------------
     # Pick detection — Quick Draft (BotDraft)
     # ------------------------------------------------------------------
-    idx = line.find(PICK_PREFIX_BOT)
-    if idx != -1:
+    bot_prefix = next((p for p in (PICK_PREFIX_BOT_B, PICK_PREFIX_BOT) if p in line), None)
+    if bot_prefix is not None:
         try:
-            outer = json.loads(line[idx + len(PICK_PREFIX_BOT):])
-            payload_str = outer.get("Payload", "{}")
+            idx = line.index(bot_prefix)
+            outer = json.loads(line[idx + len(bot_prefix):])
+            request_str = outer.get("request")
+            request = json.loads(request_str) if isinstance(request_str, str) else request_str
+            if not isinstance(request, dict):
+                request = {}
+            payload_str = outer.get("Payload") or request.get("Payload") or "{}"
             payload = json.loads(payload_str) if isinstance(payload_str, str) else payload_str
-            pick_info = payload.get("PickInfo", {})
-            arena_id = int(pick_info["CardId"])
-            state.taken_cards.append(arena_id)
-            state.phase = DraftPhase.PICK_MADE
-            changed = True
-            logger.debug("log_scanner: pick made (BotDraft) — arena_id=%d", arena_id)
+            if not isinstance(payload, dict):
+                payload = {}
+            pick_info = request.get("PickInfo") or payload.get("PickInfo") or {}
+            card_ids = pick_info.get("CardIds")
+            if card_ids is None:
+                card_id = pick_info.get("CardId")
+                card_ids = [card_id] if card_id is not None else []
+            arena_ids = [int(x) for x in card_ids]
+            if arena_ids:
+                state.taken_cards.extend(arena_ids)
+                state.phase = DraftPhase.PICK_MADE
+                changed = True
+                logger.debug("log_scanner: pick made (BotDraft) — arena_ids=%s", arena_ids)
         except (json.JSONDecodeError, KeyError, TypeError, ValueError):
             logger.debug("log_scanner: failed to parse BotDraft pick line", exc_info=False)
         return changed

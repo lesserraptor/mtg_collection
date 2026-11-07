@@ -28,5 +28,16 @@ es.addEventListener("pack_update", function(e) {
     const grid = document.getElementById("pack-grid");
     if (grid) { grid.innerHTML = e.data; htmx.process(grid); }
 });
+es.addEventListener("sidebar_update", function() {
+    fetch("/draft/sidebar", { cache: "no-store" })
+        .then(function(r) { return r.text(); })
+        .then(function(html) {
+            const sidebar = document.getElementById("draft-sidebar");
+            if (!sidebar) return;
+            sidebar.outerHTML = html;
+            const updated = document.getElementById("draft-sidebar");
+            if (updated) htmx.process(updated);
+        });
+});
 </script>
 {% endblock %}

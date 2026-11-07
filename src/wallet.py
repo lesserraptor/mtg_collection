@@ -26,17 +26,19 @@ def capture_wallet_snapshot(conn: sqlite3.Connection) -> None:
     capture_wallet_snapshot_from_log(log_path, conn)
 
 
-def capture_wallet_snapshot_from_log(log_path: Path, conn: sqlite3.Connection) -> None:
+def capture_wallet_snapshot_from_log(log_path: Path, conn: sqlite3.Connection) -> bool:
     """Capture wallet snapshot using an explicit Player.log path.
 
-    Useful for the file watcher which already has the path.
+    Returns True when the stored row for today changed, so callers can log
+    only meaningful wallet updates. Useful for the file watcher which already
+    has the path.
     """
     today = date.today().isoformat()
 
     wallet = parse_log_wallet(log_path)
     if wallet is None:
-        logger.info("wallet: parse_log_wallet returned None for %s", log_path)
-        return
+        logger.debug("wallet: parse_log_wallet returned None for %s", log_path)
+        return False
 
     total_cards = conn.execute("""
         SELECT COUNT(DISTINCT LOWER(c.name))
@@ -45,12 +47,7 @@ def capture_wallet_snapshot_from_log(log_path: Path, conn: sqlite3.Connection) -
         WHERE col.quantity > 0
     """).fetchone()[0] or 0
 
-    conn.execute("""
-        INSERT OR REPLACE INTO wallet_snapshots
-        (date, gems, gold, mythic_wc, rare_wc, uncommon_wc, common_wc, draft_tokens, total_cards)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        today,
+    values = (
         wallet.get("gems", 0),
         wallet.get("gold", 0),
         wallet.get("mythic_wc", 0),
@@ -59,6 +56,28 @@ def capture_wallet_snapshot_from_log(log_path: Path, conn: sqlite3.Connection) -
         wallet.get("common_wc", 0),
         wallet.get("draft_tokens", 0),
         total_cards,
-    ))
+    )
+
+    previous = conn.execute("""
+        SELECT gems, gold, mythic_wc, rare_wc, uncommon_wc, common_wc, draft_tokens, total_cards
+        FROM wallet_snapshots
+        WHERE date = ?
+    """, (today,)).fetchone()
+
+    conn.execute("""
+        INSERT OR REPLACE INTO wallet_snapshots
+        (date, gems, gold, mythic_wc, rare_wc, uncommon_wc, common_wc, draft_tokens, total_cards)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (today, *values))
     conn.commit()
-    logger.info("wallet: snapshot captured for %s (gems=%s, gold=%s)", today, wallet.get("gems"), wallet.get("gold"))
+
+    if previous is not None and tuple(previous) == values:
+        logger.debug(
+            "wallet: snapshot unchanged for %s (gems=%s, gold=%s)", today, values[0], values[1]
+        )
+        return False
+
+    logger.info(
+        "wallet: snapshot changed for %s (gems=%s, gold=%s)", today, values[0], values[1]
+    )
+    return True

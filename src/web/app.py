@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import re
 
 from fastapi import FastAPI
@@ -157,8 +158,11 @@ templates.env.globals["oracle_to_html"] = _oracle_to_html
 
 @app.on_event("startup")
 async def startup():
-    logging.basicConfig(level=logging.INFO)
-    import os
+    log_level_name = os.environ.get("MTG_LOG_LEVEL", "WARNING").upper()
+    if log_level_name not in {"DEBUG", "INFO", "WARNING", "ERROR"}:
+        log_level_name = "WARNING"
+    logging.basicConfig(level=getattr(logging, log_level_name))
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     from pathlib import Path
 
     app.state.db = init_db()
@@ -177,6 +181,7 @@ async def startup():
     app.state.draft_scanning = False
     app.state.draft_color_filter = set()
     app.state.draft_event_queue = asyncio.Queue()
+    app.state.draft_sidebar_queue = asyncio.Queue()
 
     import json as _json
     _draft_metric = app.state.db.execute(

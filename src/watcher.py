@@ -57,7 +57,7 @@ async def collection_reload_consumer(app, queue: asyncio.Queue) -> None:
                 logger.warning("watcher: collection file not found after modification event")
                 continue
             count = upsert_collection(app.state.db, collection_path)
-            logger.info("watcher: auto-reload triggered — %d rows processed", count)
+            logger.debug("watcher: auto-reload triggered — %d rows processed", count)
         except Exception:
             logger.exception("watcher: error during auto-reload")
 
@@ -109,8 +109,9 @@ async def wallet_reload_consumer(app, queue: asyncio.Queue) -> None:
         while not queue.empty():
             queue.get_nowait()
         try:
-            capture_wallet_snapshot_from_log(Path(path), app.state.db)
-            logger.info("wallet: auto-captured snapshot from %s", path)
+            changed = capture_wallet_snapshot_from_log(Path(path), app.state.db)
+            if changed:
+                logger.debug("wallet: player log write changed the snapshot (%s)", path)
         except Exception:
             logger.exception("wallet: error during auto-capture")
 
