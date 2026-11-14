@@ -80,8 +80,9 @@
     </div>
   </div>
 
+
   <!-- Rarity filter: pill buttons -->
-  <div class="filter-section">
+  <div class="filter-section" id="rarity-section">
     <label class="filter-label">Rarity</label>
     <div class="rarity-pills">
       {% for r, pill_class in [("common","pill-C"),("uncommon","pill-U"),("rare","pill-R"),("mythic","pill-M")] %}
@@ -92,6 +93,13 @@
         {{ r | capitalize }}
       </span>
       {% endfor %}
+      <!-- Basic pill: always visible, independent of the Card Type (Dual Lands) filter -->
+      <input type="checkbox" name="basic_lands" id="basic-lands-cb" value="1" style="display:none"
+             {{ 'checked' if selected_basic_lands else '' }} />
+      <span class="pill pill-B {% if selected_basic_lands %}active{% endif %}"
+            onclick="var cb=document.getElementById('basic-lands-cb'); cb.checked=!cb.checked; this.classList.toggle('active',cb.checked); cb.dispatchEvent(new Event('change',{bubbles:true}))">
+        Basic
+      </span>
     </div>
   </div>
 
@@ -99,12 +107,32 @@
   <div class="filter-section">
     <label class="filter-label">Card Type</label>
     <select name="type_line" id="type-line-select" class="filter-input"
-            onchange="document.getElementById('creature-type-section').style.display = (this.value === 'Creature') ? '' : 'none'; if(this.value !== 'Creature') document.getElementById('creature-type-select').value = '';">
+            onchange="document.getElementById('creature-type-section').style.display = (this.value === 'Creature') ? '' : 'none'; if(this.value !== 'Creature') document.getElementById('creature-type-select').value = ''; document.getElementById('dual-land-type-section').style.display = (this.value === 'Dual Lands') ? '' : 'none'; if(this.value !== 'Dual Lands') { document.getElementsByName('land_cycle_type').forEach(cb=>cb.checked=false); }">
       <option value="" {{ 'selected' if not type_line else '' }}>Any type</option>
-      {% for t in ["Creature","Instant","Sorcery","Enchantment","Artifact","Planeswalker","Land","Battle"] %}
+      {% for t in ["Creature","Instant","Sorcery","Enchantment","Artifact","Planeswalker","Land","Dual Lands","Battle"] %}
       <option value="{{ t }}" {{ 'selected' if type_line == t else '' }}>{{ t }}</option>
       {% endfor %}
     </select>
+  </div>
+
+  <!-- Dual Land Type (visible only when Card Type = Dual Lands) -->
+  <div class="filter-section" id="dual-land-type-section" style="{{ '' if type_line == 'Dual Lands' else 'display:none' }}">
+    <label class="filter-label">Dual Land Type</label>
+    <span style="font-size:11px">
+      <a href="#" onclick="var f=this.closest('form'); f.querySelectorAll('input[name=land_cycle_type]').forEach(cb=>cb.checked=true); f.dispatchEvent(new Event('change',{bubbles:true})); return false" style="color:#731fa1">All</a>
+      &nbsp;/&nbsp;
+      <a href="#" onclick="var f=this.closest('form'); f.querySelectorAll('input[name=land_cycle_type]').forEach(cb=>cb.checked=false); f.dispatchEvent(new Event('change',{bubbles:true})); return false" style="color:#731fa1">None</a>
+    </span>
+    <div class="rarity-pills">
+      {% for c in all_land_cycle_types %}
+      <input type="checkbox" name="land_cycle_type" id="dl-type-cb-{{ c|lower|replace(' ','-') }}" value="{{ c }}" style="display:none"
+             {{ 'checked' if c in selected_land_cycle_type else '' }} />
+      <span class="pill {% if c in selected_land_cycle_type %}active{% endif %}"
+            onclick="var cb=document.getElementById('dl-type-cb-{{ c|lower|replace(' ','-') }}'); cb.checked=!cb.checked; this.classList.toggle('active',cb.checked); cb.dispatchEvent(new Event('change',{bubbles:true}))">
+        {{ c }}
+      </span>
+      {% endfor %}
+    </div>
   </div>
 
   <!-- Creature Type (visible only when Card Type = Creature) -->

@@ -5,17 +5,61 @@
 
   <div class="card-scroll-area">
     {% if cards %}
-      <div class="card-grid">
-        {% for card in cards %}
-          {% include "partials/card_item.html" %}
-        {% endfor %}
-      </div>
+    <div class="card-grid">
+      {% for card in cards %}
+      {% include "partials/card_item.html" %}
+      {% endfor %}
+    </div>
     {% else %}
-      <div class="empty-state">
-        <div class="empty-icon">🔍</div>
-        <p>No cards found</p>
-        <p style="font-size:12px">Try adjusting your filters</p>
-      </div>
+    <div class="empty-state">
+      <div class="empty-icon">🔍</div>
+      <p>No cards found</p>
+      <p style="font-size:12px">Try adjusting your filters</p>
+    </div>
     {% endif %}
   </div>
 </div>
+
+{% if request.headers.get("HX-Request") %}
+{% if type_line == "Dual Lands" %}
+<div id="dual-land-type-section" hx-swap-oob="outerHTML">
+  <label class="filter-label">Dual Land Type</label>
+  <span style="font-size:11px">
+    <a href="#" onclick="var f=this.closest('form'); f.querySelectorAll('input[name=land_cycle_type]').forEach(cb=>cb.checked=true); f.dispatchEvent(new Event('change',{bubbles:true})); return false" style="color:#731fa1">All</a>
+    &nbsp;/&nbsp;
+    <a href="#" onclick="var f=this.closest('form'); f.querySelectorAll('input[name=land_cycle_type]').forEach(cb=>cb.checked=false); f.dispatchEvent(new Event('change',{bubbles:true})); return false" style="color:#731fa1">None</a>
+  </span>
+  <div class="rarity-pills">
+    {% for c in all_land_cycle_types %}
+    <input type="checkbox" name="land_cycle_type" id="dl-type-cb-{{ c|lower|replace(' ','-') }}" value="{{ c }}" style="display:none"
+           {{ 'checked' if c in selected_land_cycle_type else '' }} />
+    <span class="pill {% if c in selected_land_cycle_type %}active{% endif %}"
+          onclick="var cb=document.getElementById('dl-type-cb-{{ c|lower|replace(' ','-') }}'); cb.checked=!cb.checked; this.classList.toggle('active',cb.checked); cb.dispatchEvent(new Event('change',{bubbles:true}))">
+      {{ c }}
+    </span>
+    {% endfor %}
+  </div>
+</div>
+{% else %}
+<div id="dual-land-type-section" hx-swap-oob="outerHTML"></div>
+{% endif %}
+<div id="rarity-section" hx-swap-oob="outerHTML">
+  <label class="filter-label">Rarity</label>
+  <div class="rarity-pills">
+    {% for r, pill_class in [("common","pill-C"),("uncommon","pill-U"),("rare","pill-R"),("mythic","pill-M")] %}
+    <input type="checkbox" name="rarity" value="{{ r }}" id="rarity-cb-{{ r }}" style="display:none"
+           {{ 'checked' if r in selected_rarity else '' }} />
+    <span class="pill {{ pill_class }} {% if r in selected_rarity %}active{% endif %}"
+          onclick="var cb=document.getElementById('rarity-cb-{{ r }}'); cb.checked=!cb.checked; this.classList.toggle('active',cb.checked); cb.dispatchEvent(new Event('change',{bubbles:true}))">
+      {{ r | capitalize }}
+    </span>
+    {% endfor %}
+    <input type="checkbox" name="basic_lands" id="basic-lands-cb" value="1" style="display:none"
+           {{ 'checked' if selected_basic_lands else '' }} />
+    <span class="pill pill-B {% if selected_basic_lands %}active{% endif %}"
+          onclick="var cb=document.getElementById('basic-lands-cb'); cb.checked=!cb.checked; this.classList.toggle('active',cb.checked); cb.dispatchEvent(new Event('change',{bubbles:true}))">
+      Basic
+    </span>
+  </div>
+</div>
+{% endif %}

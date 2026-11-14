@@ -82,10 +82,206 @@ _ORDER_BY_GROUPED = {
 }
 
 
+# Dual-land cycle name patterns, shared between build_card_query() and
+# collection_view(). Used to determine which cycles actually have cards in
+# the DB so the sidebar only shows cycles with results.
+_LAND_CYCLE_PATTERNS: dict[str, list[str]] = {
+    # === STANDARD ===
+    "Shock Lands": [
+        "Hallowed Fountain", "Watery Grave", "Blood Crypt", "Stomping Ground",
+        "Temple Garden", "Godless Shrine", "Overgrown Tomb", "Breeding Pool",
+        "Steam Vents", "Sacred Foundry",
+    ],
+    "Slow Lands": [
+        "Deserted Beach", "Shipwreck Marsh", "Haunted Ridge", "Rockfall Vale",
+        "Overgrown Farmland", "Shattered Sanctum", "Deathcap Glade", "Dreamroot Cascade",
+        "Stormcarved Coast", "Sundown Pass",
+    ],
+    "Scry Lands": [
+        "Temple of Enlightenment", "Temple of Deceit", "Temple of Malice", "Temple of Abandon",
+        "Temple of Plenty", "Temple of Silence", "Temple of Malady", "Temple of Mystery",
+        "Temple of Epiphany", "Temple of Triumph",
+    ],
+    "Surveil Lands": [
+        "Meticulous Archive", "Undercity Sewers", "Raucous Theater", "Commercial District",
+        "Lush Portico", "Shadowy Backstreet", "Underground Mortuary", "Hedge Maze",
+        "Thundering Falls", "Elegant Parlor",
+    ],
+    "Verge Lands": [
+        "Floodfarm Verge", "Gloomlake Verge", "Blazemire Verge", "Thornspire Verge",
+        "Hushwood Verge", "Bleachbone Verge", "Wastewood Verge", "Willowrush Verge",
+        "Riverpyre Verge", "Sunbillow Verge",
+    ],
+    "Gain Lands": [
+        "Tranquil Cove", "Dismal Backwater", "Bloodfell Caves", "Rugged Highlands",
+        "Blossoming Sands", "Scoured Barrens", "Jungle Hollow", "Thornwood Falls",
+        "Swiftwater Cliffs", "Wind-Scarred Crag",
+    ],
+    "Fast Lands": [
+        # Standard (5) + Pioneer (5)
+        "Concealed Courtyard", "Blooming Marsh", "Botanical Sanctum", "Spirebluff Canal",
+        "Inspiring Vantage", "Seachrome Coast", "Darkslick Shores", "Blackcleave Cliffs",
+        "Copperline Gorge", "Razorverge Thicket",
+    ],
+    "Guildgates": [
+        "Azorius Guildgate", "Dimir Guildgate", "Rakdos Guildgate", "Gruul Guildgate",
+        "Selesnya Guildgate", "Orzhov Guildgate", "Golgari Guildgate", "Simic Guildgate",
+        "Izzet Guildgate", "Boros Guildgate",
+    ],
+    "Desert Pingers": [
+        "Lonely Arroyo", "Soured Springs", "Jagged Barrens", "Bristling Backwoods",
+        "Creosote Heath", "Forlorn Flats", "Festering Gulch", "Lush Oasis",
+        "Eroded Canyon", "Abraded Bluffs",
+    ],
+    "Creature Lands": [
+        # Standard Restless cycle (10) + Pioneer manlands (5) + Modern manlands (6)
+        "Restless Anchorage", "Restless Reef", "Restless Vents", "Restless Ridgeline",
+        "Restless Prairie", "Restless Fortress", "Restless Cottage", "Restless Vinestalk",
+        "Restless Spire", "Restless Bivouac", "Shambling Vent", "Hissing Quagmire",
+        "Lumbering Falls", "Wandering Fumarole", "Needle Spires", "Celestial Colonnade",
+        "Creeping Tar Pit", "Lavaclaw Reaches", "Raging Ravine", "Stirring Wildwood",
+        "Svogthos, the Restless Tomb",
+    ],
+    "FIN Towns": [
+        "Sharlayan", "Nation of Scholars", "Treno", "Dark City", "Vector",
+        "Imperial Capital", "Gongaga", "Reactor Town", "Windurst", "Federation Center",
+        "Insomnia", "Crown City", "Gohn", "Town of Ruin", "Guadosalam",
+        "Farplane Gateway", "Baron", "Airship Kingdom", "Rabanastre", "Royal City",
+    ],
+    "MSH Check Lands": [
+        "Gleaming Bastion", "Hidden Lair", "Dark Fortress", "Training Compound",
+        "Gathering Place",
+    ],
+    "TLA Sac Draw Lands": [
+        "North Pole Gates", "Serpent's Pass", "Boiling Rock Prison", "Omashu City",
+        "Kyoshi Village", "Misty Palms Oasis", "Foggy Bottom Swamp", "Meditation Pools",
+        "Airship Engine Room", "Sun-Blessed Peak",
+    ],
+    "SOS Surveil Lands": [
+        "Forum of Amity", "Titan's Grave", "Paradox Gardens", "Spectacle Summit",
+        "Fields of Strife",
+    ],
+    "Low Life Lands": [
+        "Abandoned Campground", "Murky Sewer", "Razortrap Gorge", "Bleeding Woods",
+        "Etched Cornfield", "Neglected Manor", "Strangled Cemetery", "Lakeside Shack",
+        "Peculiar Lighthouse", "Raucous Carnival",
+    ],
+    "SPM Surveil Lands": [
+        "University Campus", "Sinister Hideout", "Ominous Asylum", "Savage Mansion",
+        "Suburban Sanctuary",
+    ],
+    "TMT Gain Lands": [
+        "Foot Headquarters", "Illegitimate Business", "Mutant Town", "TCRI Building",
+        "Dimension X",
+    ],
+    "MSH Gain Lands": [
+        "Avengers Hangar", "A.I.M. Labs", "Hell's Kitchen", "Los Diablos Missile Base",
+        "Birnin Zana Plaza", "Fisk Tower", "Subterranean Cavern", "Pym Technologies",
+        "Stark Industries", "Asgardian Citadel",
+    ],
+    "Planeswalker Lands": [
+        "Fatehold Annex", "Theorix Annex", "Stingerquill Annex", "Konstrari Annex",
+        "Vigorbloom Annex", "Meticulous Commons", "Formidable Commons",
+        "Transformative Commons", "Innovative Commons", "Dedicated Commons",
+    ],
+    "Star Trek Gain Lands": [
+        "Vulcan", "Romulus", "Qo'noS", "Orion", "Risa", "Cardassia Prime",
+        "Ferenginar", "Earth", "Sector 001", "Andoria", "Bajor",
+    ],
+    # === PIONEER ===
+    "Check Lands": [
+        "Glacial Fortress", "Drowned Catacomb", "Dragonskull Summit", "Rootbound Crag",
+        "Sunpetal Grove", "Isolated Chapel", "Woodland Cemetery", "Hinterland Harbor",
+        "Sulfur Falls", "Clifftop Retreat",
+    ],
+    "Tango Lands": [
+        "Prairie Stream", "Sunken Hollow", "Smoldering Marsh", "Cinder Glade",
+        "Canopy Vista",
+    ],
+    "Pain Lands": [
+        "Adarkar Wastes", "Underground River", "Sulfurous Springs", "Karplusan Forest",
+        "Brushland", "Caves of Koilos", "Llanowar Wastes", "Yavimaya Coast",
+        "Shivan Reef", "Battlefield Forge",
+    ],
+    "Reveal Lands": [
+        "Port Town", "Choked Estuary", "Foreboding Ruins", "Game Trail",
+        "Fortified Village", "Shineshadow Snarl", "Necroblossom Snarl",
+        "Vineglimmer Snarl", "Frostboil Snarl", "Furycalm Snarl",
+    ],
+    "Bi-Cycle Lands": [
+        "Irrigated Farmland", "Fetid Pools", "Canyon Slough", "Sheltered Thicket",
+        "Scattered Groves",
+    ],
+    "MDFCs": [
+        # Pioneer Pathways (10) + Modern MDFCs (10)
+        "Hengegate Pathway // Mistgate Pathway", "Clearwater Pathway // Murkwater Pathway",
+        "Blightstep Pathway // Searstep Pathway", "Cragcrown Pathway // Timbercrown Pathway",
+        "Branchloft Pathway // Boulderloft Pathway", "Brightclimb Pathway // Grimclimb Pathway",
+        "Darkbore Pathway // Slitherbore Pathway", "Barkchannel Pathway // Tidechannel Pathway",
+        "Riverglide Pathway // Lavaglide Pathway", "Needleverge Pathway // Pillarverge Pathway",
+        "Suppression Ray // Orderly Plaza", "Waterlogged Teachings // Inundated Archive",
+        "Bloodsoaked Insight // Sanguine Morass", "Stump Stomp // Burnwillow Clearing",
+        "Strength of the Harvest // Haven of the Harvest", "Glasswing Grace // Age-Graced Chapel",
+        "Revitalizing Repast // Old-Growth Grove", "Drowner of Truth // Drowned Jungle",
+        "Rush of Inspiration // Crackling Falls", "Legion Leadership // Legion Stronghold",
+    ],
+    "Fetchable Tapped Lands": [
+        "Idyllic Beachfront", "Contaminated Aquifer", "Geothermal Bog", "Wooded Ridgeline",
+        "Radiant Grove", "Sunlit Marsh", "Haunted Mire", "Tangled Islet",
+        "Molten Tributary", "Sacred Peaks",
+    ],
+    "Snow Lands": [
+        "Glacial Floodplain", "Ice Tunnel", "Sulfurous Mire", "Highland Forest",
+        "Arctic Treeline", "Snowfield Sinkhole", "Woodland Chasm", "Rimewood Falls",
+        "Volatile Fjord", "Alpine Meadow",
+    ],
+    "Transform Lands": [
+        "Profane Procession // Tomb of the Dusk Rose", "Journey to Eternity // Atzal, Cave of Eternity",
+        "Hadana's Climb // Winged Temple of Orazca", "Storm the Vault // Vault of Catlacan",
+        "Path of Mettle // Metzali, Tower of Triumph",
+    ],
+    "Strixhaven Campuses": [
+        "Silverquill Campus", "Witherbloom Campus", "Quandrix Campus", "Prismari Campus",
+        "Lorehold Campus",
+    ],
+    "Generic Tapped Lands": [
+        "Meandering River", "Submerged Boneyard", "Cinder Barrens", "Timber Gorge",
+        "Tranquil Expanse", "Forsaken Sanctuary", "Foul Orchard", "Woodland Stream",
+        "Highland Lake", "Stone Quarry",
+    ],
+    # === MODERN ===
+    "Horizon Lands": [
+        "Silent Clearing", "Nurturing Peatland", "Waterlogged Grove", "Fiery Islet",
+        "Sunbaked Canyon",
+    ],
+    "Future Shifted Lands": [
+        "Nimbus Maze", "River of Tears", "Graven Cairns", "Grove of the Burnwillows",
+        "Horizon Canopy",
+    ],
+    "Bounce Lands": [
+        "Azorius Chancery", "Dimir Aqueduct", "Rakdos Carnarium", "Gruul Turf",
+        "Selesnya Sanctuary", "Orzhov Basilica", "Golgari Rot Farm", "Simic Growth Chamber",
+        "Izzet Boilerworks", "Boros Garrison",
+    ],
+    "Refuges": [
+        "Sejiri Refuge", "Jwar Isle Refuge", "Akoum Refuge", "Kazandu Refuge",
+        "Graypelt Refuge", "Alchemist's Refuge",
+    ],
+    "Invasion Lands": [
+        "Coastal Tower", "Salt Marsh", "Urborg Volcano", "Shivan Oasis", "Elfhame Palace",
+    ],
+    "Coldsnap Snow Lands": [
+        "Boreal Shelf", "Frost Marsh", "Tresserhorn Sinks", "Highland Weald",
+        "Arctic Flats",
+    ],
+    "Other Dual Lands": [],
+}
+
 def build_card_query(
     name: str = "",
     colors: list[str] | None = None,
     rarity: list[str] | None = None,
+    basic_lands: bool = False,
     type_line: str = "",
     creature_type: str = "",
     cmc_min: float | None = None,
@@ -97,6 +293,7 @@ def build_card_query(
     copies_active: bool = False,
     sort: str = "alpha",
     oracle_text: str = "",
+    land_cycle_type: list[str] | None = None,
 ) -> tuple[str, list[Any]]:
     """Build a parameterized SQL query for card filtering.
 
@@ -165,9 +362,43 @@ def build_card_query(
         conditions.append(f"c.rarity IN ({placeholders})")
         params.extend(rarity)
 
-    if type_line:
+    if basic_lands:
+        conditions.append("(c.type_line LIKE '%Basic Land%' OR c.rarity = 'basic')")
+
+    if type_line == "Dual Lands":
+        conditions.append("c.type_line LIKE '%Land%'")
+        if not basic_lands:
+            conditions.append("json_array_length(c.color_identity) = 2")
+    elif type_line:
         conditions.append("c.type_line LIKE ?")
         params.append(f"%{type_line}%")
+
+    if type_line == "Dual Lands" and land_cycle_type:
+        valid_cycles = [c for c in land_cycle_type if c in _LAND_CYCLE_PATTERNS]
+        if not valid_cycles:
+            pass  # no valid cycles selected
+        elif len(valid_cycles) == 1 and valid_cycles[0] == "Other Dual Lands":
+            # Other Dual Lands: 2-color lands matching NONE of the known cycles
+            all_known = [p for plist in _LAND_CYCLE_PATTERNS.values() if plist for p in plist]
+            for p in all_known:
+                conditions.append("c.name NOT LIKE ?")
+                params.append(f"%{p}%")
+        else:
+            # Build OR of cycles: (cycle1_patterns OR cycle2_patterns OR ...)
+            cycle_or_parts: list[str] = []
+            cycle_or_params: list[Any] = []
+            for cycle in valid_cycles:
+                patterns = _LAND_CYCLE_PATTERNS[cycle]
+                if cycle == "Other Dual Lands":
+                    continue  # skip Other in multi-select OR; it's handled alone above
+                if not patterns:
+                    continue
+                inner = " OR ".join(["c.name LIKE ?"] * len(patterns))
+                cycle_or_parts.append(f"({inner})")
+                cycle_or_params.extend(f"%{p}%" for p in patterns)
+            if cycle_or_parts:
+                conditions.append("(" + " OR ".join(cycle_or_parts) + ")")
+                params.extend(cycle_or_params)
 
     if creature_type:
         # Match subtype in the portion after '—' to avoid false positives
@@ -372,7 +603,6 @@ def query_cards(
     offset = (page - 1) * per_page
 
     sql, params = build_card_query(**filter_kwargs)
-
     # Count query: wrap in subquery to count total rows
     count_sql = f"SELECT COUNT(*) FROM ({sql}) AS sub"
     total = db.execute(count_sql, params).fetchone()[0]
@@ -467,6 +697,7 @@ async def collection_view(
     name: str = "",
     colors: list[str] = Query(default=[]),
     rarity: list[str] = Query(default=[]),
+    basic_lands: bool = False,
     type_line: str = "",
     creature_type: str = "",
     cmc_min_raw: str = Query(default="", alias="cmc_min"),
@@ -480,6 +711,7 @@ async def collection_view(
     page: int = 1,
     per_page: int = 20,
     oracle_text: str = "",
+    land_cycle_type: list[str] = Query(default=[]),
 ):
     """Collection browsing view with filter support.
 
@@ -522,6 +754,7 @@ async def collection_view(
         name=name,
         colors=colors,
         rarity=rarity,
+        basic_lands=basic_lands,
         type_line=type_line,
         creature_type=creature_type,
         cmc_min=cmc_min,
@@ -533,7 +766,55 @@ async def collection_view(
         owned_copies=owned_copies,
         copies_active=copies_active,
         oracle_text=oracle_text,
+        land_cycle_type=land_cycle_type,
     )
+
+    # Dual Lands view: show all dual lands regardless of ownership
+    # (default min_owned=1 would hide unowned creature lands etc.)
+    if type_line == "Dual Lands":
+        filter_params["min_owned"] = 0
+
+    # Determine which dual-land cycles actually have cards in the DB,
+    # further filtered by selected rarity so pills with no matching cards disappear.
+    all_land_cycle_types: list[str] = []
+    if land_cycle_type or type_line == "Dual Lands":
+        dual_rows = db.execute(
+            "SELECT name, rarity FROM cards WHERE type_line LIKE '%Land%' "
+            "AND json_array_length(color_identity) = 2 AND is_active = 1"
+        ).fetchall()
+        dual_names = {row["name"] for row in dual_rows}
+        dual_rarities = {row["name"]: row["rarity"] for row in dual_rows}
+        cycles_with_cards = set()
+        for cycle_name, patterns in _LAND_CYCLE_PATTERNS.items():
+            if not patterns:
+                continue
+            for pattern in patterns:
+                matches = [name for name in dual_names if pattern in name]
+                if not matches:
+                    continue
+                # If a rarity is selected, only keep cycles that have a card of that rarity
+                if rarity:
+                    selected = {r.lower() for r in rarity}
+                    if not any(
+                        dual_rarities.get(name, "").lower() in selected
+                        for name in matches
+                    ):
+                        continue
+                if basic_lands:
+                    # Basic filter: only show cycles that contain at least one
+                    # card with rarity='basic' (e.g., Low Life Lands has Abandoned
+                    # Campground which is rarity=basic despite type_line=Land)
+                    if not any(
+                        dual_rarities.get(name, "").lower() == "basic"
+                        for name in matches
+                    ):
+                        continue
+                cycles_with_cards.add(cycle_name)
+                break
+        # Preserve dict order, filtered to cycles with DB cards
+        all_land_cycle_types = [
+            c for c in _LAND_CYCLE_PATTERNS.keys() if c in cycles_with_cards
+        ]
 
     cards, total = query_cards(db, page=page, per_page=per_page, **filter_params)
 
@@ -553,6 +834,7 @@ async def collection_view(
         # Filter state for pre-filling form
         "selected_colors": colors,
         "selected_rarity": rarity,
+        "selected_basic_lands": basic_lands,
         "name": name,
         "type_line": type_line,
         "creature_type": creature_type,
@@ -565,10 +847,12 @@ async def collection_view(
         "owned_copies": owned_copies,
         "copies_active": copies_active,
         "oracle_text": oracle_text,
+        "selected_land_cycle_type": land_cycle_type,
         # Dropdown options
         "sets": filter_options["sets"],
         "all_keywords": filter_options["keywords"],
         "all_creature_types": filter_options["creature_types"],
+        "all_land_cycle_types": all_land_cycle_types,
     }
 
     if request.headers.get("HX-Request"):

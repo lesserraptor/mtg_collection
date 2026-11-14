@@ -2,7 +2,11 @@
 
 from fastapi import APIRouter, Query, Request
 
-from src.db.analysis import get_missing_cards_ranked, get_missing_cards_decks, get_decks_ranked_by_missing
+from src.db.analysis import (
+    get_missing_cards_ranked,
+    get_missing_cards_decks,
+    get_decks_ranked_by_missing,
+)
 
 router = APIRouter()
 
@@ -15,11 +19,12 @@ async def analysis_view(
     view: str = "cards",
     type_line: list[str] = Query(default=[]),
     types_submitted: bool = False,
+    color: list[str] = Query(default=[]),
+    colors_submitted: bool = False,
 ):
     db = request.app.state.db
     templates = request.app.state.templates
 
-    # Scope (is_potential/is_saved, complete-deck exclusion) enforced in analysis.py query functions.
     missing_cards = get_missing_cards_ranked(db)
     missing_cards_decks = get_missing_cards_decks(db)
     missing_decks = get_decks_ranked_by_missing(db)
@@ -36,7 +41,7 @@ async def analysis_view(
 
     context = {
         "mode": "analysis",
-        "view": view,  # "cards" | "decks"
+        "view": view,  # "cards" | "decks" | "sets"
         "missing_cards": missing_cards,
         "missing_cards_decks": missing_cards_decks,
         "missing_decks": missing_decks,
